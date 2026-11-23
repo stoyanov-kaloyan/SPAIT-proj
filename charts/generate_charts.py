@@ -58,12 +58,16 @@ def save_bar_chart(labels, values, title, filename, horizontal=True):
     plt.close(fig)
 
 
-def save_histogram(values, title, filename, bins=30):
+def save_area_class_chart(class_counts, title, filename):
+    labels = list(class_counts.keys())
+    values = list(class_counts.values())
     fig, ax = plt.subplots(figsize=(9.2, 5.2))
-    ax.hist(values, bins=bins, color=COLORS[0], edgecolor="#f7f8f6")
+    bars = ax.bar(labels, values, color=COLORS)
     ax.set_title(title, loc="left", fontsize=14, fontweight="bold", pad=12)
-    ax.set_xlabel("Площ (хектара)")
+    ax.set_xlabel("Площен клас")
     ax.set_ylabel("Брой защитени територии")
+    ax.tick_params(axis="x", rotation=20)
+    ax.bar_label(bars, fmt="%.0f", padding=4)
     ax.grid(axis="y", alpha=0.18)
     ax.spines[["top", "right"]].set_visible(False)
     fig.tight_layout()
@@ -104,17 +108,47 @@ def main():
     )
 
     areas = [area for row in protected if (area := numeric(row["area_ha"])) is not None]
-    if areas:
-        save_histogram(areas, "Разпределение на площите по локалния XLS източник", "area-distribution.png")
+    area_classes = {
+        "до 10 ха": 0,
+        "10–50 ха": 0,
+        "50–100 ха": 0,
+        "100–500 ха": 0,
+        "500–1000 ха": 0,
+        "1000–5000 ха": 0,
+        "над 5000 ха": 0,
+    }
+    for area in areas:
+        if area < 10:
+            area_classes["до 10 ха"] += 1
+        elif area < 50:
+            area_classes["10–50 ха"] += 1
+        elif area < 100:
+            area_classes["50–100 ха"] += 1
+        elif area < 500:
+            area_classes["100–500 ха"] += 1
+        elif area < 1000:
+            area_classes["500–1000 ха"] += 1
+        elif area < 5000:
+            area_classes["1000–5000 ха"] += 1
+        else:
+            area_classes["над 5000 ха"] += 1
+    save_area_class_chart(
+        area_classes,
+        "Защитени територии по площен клас",
+        "area-classes.png",
+    )
 
-    natura_sci = read_csv(MODEL / "natura2000-sci.csv")
-    natura_spa = read_csv(MODEL / "natura2000-spa.csv")
+    protected_with_area = [
+        (row["name_bg"], numeric(row["area_ha"]))
+        for row in protected
+        if numeric(row["area_ha"]) is not None
+    ]
+    top_areas = sorted(protected_with_area, key=lambda item: item[1], reverse=True)[:15]
     save_bar_chart(
-        ["SCI", "SPA"],
-        [len(natura_sci), len(natura_spa)],
-        "Брой записи на зони от Натура 2000",
-        "natura2000-types.png",
-        horizontal=False,
+        [name for name, _ in reversed(top_areas)],
+        [area for _, area in reversed(top_areas)],
+        "Най-големи защитени територии по площ",
+        "top-areas.png",
     )
 
     change_counts = Counter()
@@ -147,6 +181,28 @@ def main():
         "venerable-trees-top.png",
     )
 
+    region_counts = Counter(row["regions"].split("\n")[0].strip()
+                            for row in protected
+                            if row["regions"].strip())
+    top_regions = region_counts.most_common(15)
+    save_bar_chart(
+        [name for name, _ in reversed(top_regions)],
+        [count for _, count in reversed(top_regions)],
+        "Защитени територии по област",
+        "regions-count.png",
+    )
+
+    authority_counts = Counter(row["authority"].strip()
+                               for row in protected
+                               if row["authority"].strip())
+    top_authorities = authority_counts.most_common(15)
+    save_bar_chart(
+        [name for name, _ in reversed(top_authorities)],
+        [count for _, count in reversed(top_authorities)],
+        "Защитени територии по отговорен орган",
+        "authorities-count.png",
+    )
+
     statistics = {
         "protected_areas": {
             "total": len(protected),
@@ -159,6 +215,13 @@ def main():
                 "average": round(sum(areas) / len(areas), 4) if areas else None,
                 "total": round(sum(areas), 4) if areas else None,
             },
+            "area_classes": area_classes,
+            "top_areas": [
+                {"name": name, "area_ha": round(area, 4)}
+                for name, area in top_areas
+            ],
+            "top_regions": dict(top_regions),
+            "top_authorities": dict(top_authorities),
         },
         "effaced_protected_areas": {
             "total": len(effaced),
@@ -169,16 +232,12 @@ def main():
             "counted_trees": sum(tree_counts.values()),
             "top_species": dict(top_trees),
         },
-        "natura2000": {
-            "SCI": len(natura_sci),
-            "SPA": len(natura_spa),
-        },
     }
     (OUTPUT / "statistics.json").write_text(
         json.dumps(statistics, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    print("Generated 6 charts and charts/statistics.json")
+    print("Generated Bulgarian-registry charts and charts/statistics.json")
 
 
 if __name__ == "__main__":

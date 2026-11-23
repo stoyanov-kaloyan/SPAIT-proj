@@ -258,7 +258,7 @@ function App() {
           </section>
 
           <aside className="results-panel">
-            <div className="panel-heading results-heading"><div><h2>Защитени територии</h2><span>{filtered.length.toLocaleString('bg-BG')} резултата</span></div><span className="last-update">Източник: локални XLS/DBF данни</span></div>
+            <div className="panel-heading results-heading"><div><h2>Защитени територии</h2><span>{filtered.length.toLocaleString('bg-BG')} резултата</span></div><span className="last-update">Източник: Държавния регистър на ИАОС</span></div>
             <div className="table-wrap">
               <table><thead><tr><th>НАИМЕНОВАНИЕ</th><th>КАТЕГОРИЯ</th><th>№</th><th>СТАТУС НА ЦИФРОВИТЕ ГРАНИЦИ</th><th /></tr></thead>
                 <tbody>{pageRows.map((item) => <tr key={item.source_code} onClick={() => { setSelected(item); setFitTargetId(item.source_code); }} className={selected?.source_code === item.source_code ? 'row-selected' : ''}>

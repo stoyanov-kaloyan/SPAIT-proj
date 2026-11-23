@@ -224,7 +224,7 @@ def build_dictionary():
         {"dataset": "protected-areas.csv", "field": "name_bg", "type": "text", "description": "Официално наименование"},
         {"dataset": "protected-areas.csv", "field": "category_code", "type": "integer", "description": "Категория от 1 до 6"},
         {"dataset": "protected-areas.csv", "field": "category_name", "type": "text", "description": "Наименование на категорията"},
-        {"dataset": "protected-areas.csv", "field": "area_ha", "type": "decimal", "description": "Площ в хектари от локалния XLS източник"},
+        {"dataset": "protected-areas.csv", "field": "area_ha", "type": "decimal", "description": "Площ в хектари от данните на Държавния регистър"},
         {"dataset": "protected-areas.csv", "field": "purpose", "type": "text", "description": "Цел на обявяване"},
         {"dataset": "protected-areas.csv", "field": "boundary_status", "type": "text", "description": "Статус на цифровите граници"},
         {"dataset": "protected-areas.csv", "field": "source_url", "type": "url", "description": "Официална връзка към записа в ИАОС"},
