@@ -140,25 +140,6 @@ def main():
                 "type": "MultiPolygon",
                 "coordinates": [[ring] for ring in geographic_rings],
             }
-        # Recompute each feature's geographic bounds directly from the source
-        # geometry so zoom operations do not depend on an approximate SVG mapping.
-        positions = []
-        position = 100
-        while position + 8 <= len(raw):
-            content_bytes = struct.unpack_from(">i", raw, position + 4)[0] * 2
-            shape = raw[position + 8:position + 8 + content_bytes]
-            position += 8 + content_bytes
-            if len(shape) < 44:
-                continue
-            shape_type = struct.unpack_from("<i", shape, 0)[0]
-            if shape_type == 0:
-                continue
-            part_count, point_count = struct.unpack_from("<ii", shape, 36)
-            points_start = 44 + part_count * 4
-            coordinates = [struct.unpack_from("<2d", shape, points_start + index * 16)
-                           for index in range(point_count)]
-            positions.append(coordinates)
-
         features.append({
             "id": code,
             "name": record.get("NAME1", ""),
