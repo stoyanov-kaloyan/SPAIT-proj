@@ -1,39 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ArrowDownUp, ArrowUpRight, ChevronDown, Download, ExternalLink, Filter, MapPin, Search, X } from 'lucide-react';
 import { categories, csvText, latestSourceDate, territories } from './data.js';
+import mapData from './territory-map.json';
 
 const palette = ['#66896b', '#bd9b55', '#496f58', '#5b8882', '#7189a0', '#81779c'];
 const categoryIndex = (name) => Math.max(0, categories.indexOf(name));
 
 function TerritoryMap({ featureMap, visible, selectedId, onSelect }) {
-  const [mapData, setMapData] = useState(null);
-  const [error, setError] = useState(false);
-  useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}territory-map.json`)
-      .then((response) => { if (!response.ok) throw new Error('Map unavailable'); return response.json(); })
-      .then(setMapData)
-      .catch(() => setError(true));
-  }, []);
-
-  if (error) return <div className="map-message">Картографичният файл не се зареди. Направи нов deploy, включващ папка `frontend/public`.</div>;
-  if (!mapData) return <div className="map-message">Зареждане на геометрията…</div>;
-
-  const [minX, minY, maxX, maxY] = mapData.bbox;
-  const viewBox = `${minX} ${minY} ${maxX - minX} ${maxY - minY}`;
-  const yFlip = minY + maxY;
+  const viewBox = mapData.viewBox.join(' ');
   return (
     <svg className="map-svg" viewBox={viewBox} role="img" aria-label="Карта на защитените територии в България" preserveAspectRatio="xMidYMid meet">
-      <g transform={`translate(0 ${yFlip}) scale(1 -1)`}>
-        {mapData.features.map((feature) => {
-          const row = featureMap.get(feature.id);
-          if (!row || !visible.has(feature.id)) return null;
-          const selected = selectedId === feature.id;
-          return <path key={feature.id} d={feature.d} fill={selected ? '#173d2d' : palette[categoryIndex(row.category_name)]}
-            fillOpacity={selected ? 0.95 : 0.68} stroke={selected ? '#112d22' : '#f6f8f4'} strokeWidth={selected ? 95 : 34}
-            vectorEffect="non-scaling-stroke" fillRule="evenodd" className="map-feature"
-            onClick={() => onSelect(row)}><title>{row.name_bg} · {row.category_name}</title></path>;
-        })}
-      </g>
+      {mapData.features.map((feature) => {
+        const row = featureMap.get(feature.id);
+        if (!row || !visible.has(feature.id)) return null;
+        const selected = selectedId === feature.id;
+        return <path key={feature.id} d={feature.d} fill={selected ? '#173d2d' : palette[categoryIndex(row.category_name)]}
+          fillOpacity={selected ? 0.95 : 0.68} stroke={selected ? '#f6f8f4' : '#dbe3d8'} strokeWidth={selected ? 2.5 : 0.7}
+          fillRule="evenodd" className="map-feature"
+          onClick={() => onSelect(row)}><title>{row.name_bg} · {row.category_name}</title></path>;
+      })}
     </svg>
   );
 }
@@ -46,6 +31,8 @@ function App() {
   const [selected, setSelected] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [mapFiltered, setMapFiltered] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
 
   const counts = useMemo(() => ({
     total: territories.length,
@@ -74,6 +61,12 @@ function App() {
   };
   const clearFilters = () => { setQuery(''); setCategory('Всички категории'); setStatus('Всички граници'); };
   const hasFilters = query || category !== 'Всички категории' || status !== 'Всички граници';
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageRows = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const pageButtons = Array.from({ length: pageCount }, (_, index) => index + 1)
+    .filter((number) => number === 1 || number === pageCount || Math.abs(number - currentPage) <= 1);
+  useEffect(() => { setPage(1); }, [query, category, status, sortBy]);
 
   return (
     <main className="app-shell">
@@ -112,7 +105,7 @@ function App() {
             <div className="panel-heading results-heading"><div><h2>Територии</h2><span>{filtered.length.toLocaleString('bg-BG')} резултата</span></div><span className="last-update">Източник: ИАОС<br />{latestSourceDate}</span></div>
             <div className="table-wrap">
               <table><thead><tr><th>НАИМЕНОВАНИЕ</th><th>КАТЕГОРИЯ</th><th>№</th><th>ГРАНИЦА</th><th /></tr></thead>
-                <tbody>{filtered.slice(0, 150).map((item) => <tr key={item.source_code} onClick={() => setSelected(item)} className={selected?.source_code === item.source_code ? 'row-selected' : ''}>
+                <tbody>{pageRows.map((item) => <tr key={item.source_code} onClick={() => setSelected(item)} className={selected?.source_code === item.source_code ? 'row-selected' : ''}>
                   <td><span className="territory-name">{item.name_bg}</span></td>
                   <td><span className="category-tag"><i style={{ background: palette[categoryIndex(item.category_name)] }} />{item.category_name}</span></td>
                   <td className="number-cell">{item.registry_number}</td>
@@ -122,7 +115,11 @@ function App() {
               </table>
               {!filtered.length && <div className="empty-state"><h3>Няма намерени територии</h3><p>Промени търсенето или филтрите.</p><button onClick={clearFilters}>Изчисти филтрите</button></div>}
             </div>
-            {filtered.length > 150 && <div className="table-footer">Показани са 150 резултата. Използвай търсенето за по-тесен списък.</div>}
+            {filtered.length > 0 && <div className="pagination"><span>{(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filtered.length)} от {filtered.length.toLocaleString('bg-BG')}</span><div className="page-controls">
+              <button onClick={() => setPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1} aria-label="Предишна страница">‹</button>
+              {pageButtons.map((number, index) => <Fragment key={number}>{index > 0 && pageButtons[index - 1] !== number - 1 && <span className="page-ellipsis">…</span>}<button className={number === currentPage ? 'active-page' : ''} onClick={() => setPage(number)} aria-current={number === currentPage ? 'page' : undefined}>{number}</button></Fragment>)}
+              <button onClick={() => setPage(Math.min(pageCount, currentPage + 1))} disabled={currentPage === pageCount} aria-label="Следваща страница">›</button>
+            </div></div>}
           </aside>
         </div>
       </section>

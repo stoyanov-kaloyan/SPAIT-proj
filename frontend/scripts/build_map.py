@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SHP = ROOT / "zpo_all" / "zpo_all.shp"
 DBF = ROOT / "zpo_all" / "zpo_all.dbf"
-OUT = Path(__file__).resolve().parents[1] / "public" / "territory-map.json"
+OUT = Path(__file__).resolve().parents[1] / "src" / "territory-map.json"
 
 
 def read_dbf(path):
@@ -74,6 +74,14 @@ def main():
     dbf = read_dbf(DBF)
     raw = SHP.read_bytes()
     minx, miny, maxx, maxy = struct.unpack_from("<4d", raw, 36)
+    width, height, margin = 1000, 680, 20
+    scale_x = (width - margin * 2) / (maxx - minx)
+    scale_y = (height - margin * 2) / (maxy - miny)
+
+    def project(point):
+        x, y = point
+        return (margin + (x - minx) * scale_x, margin + (maxy - y) * scale_y)
+
     records, pos = [], 100
     while pos + 8 <= len(raw):
         content_bytes = struct.unpack_from(">i", raw, pos + 4)[0] * 2
@@ -97,7 +105,7 @@ def main():
             ring = simplify(coords[start:end], 65)
             if len(ring) < 4:
                 continue
-            path.append("M" + "L".join(f"{fmt(x)} {fmt(y)}" for x, y in ring) + "Z")
+            path.append("M" + "L".join(f"{fmt(x)} {fmt(y)}" for x, y in map(project, ring)) + "Z")
         records.append("".join(path))
 
     features = []
@@ -114,7 +122,7 @@ def main():
             "d": path,
         })
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps({"bbox": [minx, miny, maxx, maxy], "features": features}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    OUT.write_text(json.dumps({"viewBox": [0, 0, width, height], "features": features}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"Wrote {len(features)} map features to {OUT} ({OUT.stat().st_size:,} bytes)")
 
 
