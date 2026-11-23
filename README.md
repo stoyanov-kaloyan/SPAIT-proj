@@ -10,6 +10,7 @@
 - `scripts/build_model.py` — офлайн генератор на табличния модел от локалните XLS, DBF и ZIP входове;
 - `scripts/build_map.py` — офлайн генератор на SVG геометрията от Shapefile;
 - `model/` — генерирани изходи: защитени територии, заличени територии, вековни дървета, SCI/SPA зони, карта и речник;
+- `charts/` — Python скрипт, статистически изображения и машинночетим статистически файл;
 - `presentation.md` — план на слайдовете и говорни бележки за представянето;
 - `model.md` — описание на избора, концептуалния модел, колоните и изводите;
 - `assignment_compliance.md` — сверка на наличните материали с изискванията на заданието;
@@ -30,8 +31,10 @@ XLS значения остават празни; скриптът не извл
 Изграждане на целия локален модел:
 
 ```powershell
+python -m pip install -r requirements.txt
 python .\scripts\build_model.py
 python .\scripts\build_map.py
+python .\charts\generate_charts.py
 ```
 
 ## Отворен формат и лиценз
