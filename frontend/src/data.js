@@ -19,6 +19,9 @@ function parseCsv(text) {
   }
   if (value.length || row.length) { row.push(value.replace(/\r$/, '')); rows.push(row); }
   const [headers, ...records] = rows;
+  // Excel-compatible UTF-8 CSV files may begin with a BOM.  Remove it from
+  // the first header so source_code remains a usable property name.
+  headers[0] = headers[0].replace(/^\uFEFF/, '');
   return records.filter((record) => record.length === headers.length)
     .map((record) => Object.fromEntries(headers.map((header, index) => [header, record[index]])));
 }
