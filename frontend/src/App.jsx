@@ -1,15 +1,42 @@
-import { useMemo, useState } from 'react';
-import { ArrowDownUp, ArrowUpRight, ChevronDown, Compass, Download, ExternalLink, Filter, Leaf, MapPin, Search, ShieldCheck, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowDownUp, ArrowUpRight, ChevronDown, Download, ExternalLink, Filter, MapPin, Search, X } from 'lucide-react';
 import { categories, csvText, latestSourceDate, territories } from './data.js';
 
-const categoryColor = {
-  'Защитена местност': 'sage',
-  'Природна забележителност': 'amber',
-  'Резерват': 'forest',
-  'Поддържан резерват': 'teal',
-  'Природен парк': 'blue',
-  'Национален парк': 'violet',
-};
+const palette = ['#66896b', '#bd9b55', '#496f58', '#5b8882', '#7189a0', '#81779c'];
+const categoryIndex = (name) => Math.max(0, categories.indexOf(name));
+
+function TerritoryMap({ featureMap, visible, selectedId, onSelect }) {
+  const [mapData, setMapData] = useState(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    fetch(`${import.meta.env.BASE_URL}territory-map.json`)
+      .then((response) => { if (!response.ok) throw new Error('Map unavailable'); return response.json(); })
+      .then(setMapData)
+      .catch(() => setError(true));
+  }, []);
+
+  if (error) return <div className="map-message">Картографичният файл не се зареди. Направи нов deploy, включващ папка `frontend/public`.</div>;
+  if (!mapData) return <div className="map-message">Зареждане на геометрията…</div>;
+
+  const [minX, minY, maxX, maxY] = mapData.bbox;
+  const viewBox = `${minX} ${minY} ${maxX - minX} ${maxY - minY}`;
+  const yFlip = minY + maxY;
+  return (
+    <svg className="map-svg" viewBox={viewBox} role="img" aria-label="Карта на защитените територии в България" preserveAspectRatio="xMidYMid meet">
+      <g transform={`translate(0 ${yFlip}) scale(1 -1)`}>
+        {mapData.features.map((feature) => {
+          const row = featureMap.get(feature.id);
+          if (!row || !visible.has(feature.id)) return null;
+          const selected = selectedId === feature.id;
+          return <path key={feature.id} d={feature.d} fill={selected ? '#173d2d' : palette[categoryIndex(row.category_name)]}
+            fillOpacity={selected ? 0.95 : 0.68} stroke={selected ? '#112d22' : '#f6f8f4'} strokeWidth={selected ? 95 : 34}
+            vectorEffect="non-scaling-stroke" fillRule="evenodd" className="map-feature"
+            onClick={() => onSelect(row)}><title>{row.name_bg} · {row.category_name}</title></path>;
+        })}
+      </g>
+    </svg>
+  );
+}
 
 function App() {
   const [query, setQuery] = useState('');
@@ -18,12 +45,12 @@ function App() {
   const [sortBy, setSortBy] = useState('name_bg');
   const [selected, setSelected] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [mapFiltered, setMapFiltered] = useState(false);
 
   const counts = useMemo(() => ({
     total: territories.length,
     current: territories.filter((item) => item.boundary_status === 'актуална').length,
     updating: territories.filter((item) => item.boundary_status !== 'актуална').length,
-    categoryCount: categories.length,
   }), []);
 
   const filtered = useMemo(() => {
@@ -39,97 +66,76 @@ function App() {
       : a.name_bg.localeCompare(b.name_bg, 'bg'));
   }, [query, category, status, sortBy]);
 
+  const featureMap = useMemo(() => new Map(territories.map((item) => [item.source_code, item])), []);
+  const visible = useMemo(() => new Set((mapFiltered ? filtered : territories).map((item) => item.source_code)), [filtered, mapFiltered]);
   const downloadCsv = () => {
-    const blob = new Blob(['\ufeff', csvText], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'protected_territories.csv';
-    link.click();
-    URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(new Blob(['\ufeff', csvText], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'protected_territories.csv'; link.click(); URL.revokeObjectURL(url);
   };
-
   const clearFilters = () => { setQuery(''); setCategory('Всички категории'); setStatus('Всички граници'); };
   const hasFilters = query || category !== 'Всички категории' || status !== 'Всички граници';
 
   return (
     <main className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#top" aria-label="Начало">
-          <span className="brand-mark"><Leaf size={19} strokeWidth={1.8} /></span>
-          <span>ЗЕЛЕНО ДЕЛО<small>ОТВОРЕНИ ДАННИ · БЪЛГАРИЯ</small></span>
-        </a>
-        <nav className="top-nav"><a className="nav-active" href="#explore">Регистър</a><a href="../sources_and_gaps.md">За данните</a></nav>
-        <button className="download-button" onClick={downloadCsv}><Download size={16} /> <span>Изтегли CSV</span></button>
+        <a className="brand" href="#top"><span className="brand-mark"><MapPin size={17} /></span><span>РЕГИСТЪР НА ЗАЩИТЕНИТЕ ТЕРИТОРИИ</span></a>
+        <div className="header-meta">БЪЛГАРИЯ <span /> {counts.total.toLocaleString('bg-BG')} ЗАПИСА</div>
+        <button className="download-button" onClick={downloadCsv}><Download size={16} /> CSV</button>
       </header>
 
-      <section className="hero" id="top">
-        <div className="hero-copy">
-          <div className="eyebrow"><span className="eyebrow-line" /> НАЦИОНАЛЕН РЕГИСТЪР</div>
-          <h1>Природата<br /><em>има своите</em> граници.</h1>
-          <p>Разгледай защитените територии в България — от резервати до природни паркове.</p>
-          <a className="hero-link" href="#explore">Разгледай регистъра <ArrowDownUp size={15} /></a>
-        </div>
-        <div className="hero-art" aria-hidden="true">
-          <div className="sun" />
-          <div className="mountain mountain-back" />
-          <div className="mountain mountain-front" />
-          <div className="ridge ridge-one" /><div className="ridge ridge-two" />
-          <div className="hero-stamp"><span>ЗАЩИТЕНО</span><ShieldCheck size={22} /><span>ПРИРОДНО</span></div>
-          <div className="hero-coordinate">42°41′ С.Ш. &nbsp; 23°19′ И.Д.</div>
-        </div>
-        <div className="hero-index">01 <span>/</span> 06</div>
-      </section>
-
-      <section className="stats-row" aria-label="Обобщени данни">
-        <div className="stat"><span className="stat-number">{counts.total.toLocaleString('bg-BG')}</span><span className="stat-label">ТЕРИТОРИИ В СЛОЯ</span></div>
-        <div className="stat"><span className="stat-number">{counts.categoryCount.toString().padStart(2, '0')}</span><span className="stat-label">ЗАЩИТЕНИ КАТЕГОРИИ</span></div>
-        <div className="stat"><span className="stat-number">{counts.current.toLocaleString('bg-BG')}</span><span className="stat-label">ГРАНИЦИ СТАТУС „АКТУАЛНА“</span></div>
-        <div className="stat stat-note"><span className="live-dot" /> <span>Източник: ИАОС<br /><small>Слой с данни от {latestSourceDate} г.</small></span></div>
+      <section className="summary" id="top">
+        <div><h1>Защитени територии</h1><p>Интерактивен преглед на наличните записи и граници.</p></div>
+        <div className="summary-stats"><div><b>{counts.total.toLocaleString('bg-BG')}</b><span>ЗАПИСА</span></div><div><b>{counts.current.toLocaleString('bg-BG')}</b><span>АКТУАЛНИ ГРАНИЦИ</span></div><div><b>{counts.updating}</b><span>В АКТУАЛИЗАЦИЯ</span></div></div>
       </section>
 
       <section className="explorer" id="explore">
-        <div className="section-heading">
-          <div><div className="eyebrow"><span className="eyebrow-line" /> КАТАЛОГ НА ТЕРИТОРИИТЕ</div><h2>Намери своето място.</h2></div>
-          <p>Данните са от публичния регистър на ИАОС.<br />Използвай търсене и филтрите, за да разгледаш записите.</p>
-        </div>
         <div className="toolbar">
-          <label className="search-box"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Търси по име, номер или код..." /></label>
+          <label className="search-box"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Търси име, номер или код…" /></label>
           <button className={`filter-toggle ${showFilters ? 'pressed' : ''}`} onClick={() => setShowFilters(!showFilters)}><Filter size={16} /> Филтри <ChevronDown size={15} /></button>
-          <label className="sort-select"><span>СОРТИРАНЕ:</span><select value={sortBy} onChange={(event) => setSortBy(event.target.value)}><option value="name_bg">По име</option><option value="registry_number">По номер</option></select></label>
+          <label className="sort-select"><span>СОРТИРАНЕ</span><select value={sortBy} onChange={(event) => setSortBy(event.target.value)}><option value="name_bg">По име</option><option value="registry_number">По номер</option></select></label>
         </div>
         {showFilters && <div className="filter-panel">
           <label>Категория<select value={category} onChange={(event) => setCategory(event.target.value)}><option>Всички категории</option>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label>Статус на границата<select value={status} onChange={(event) => setStatus(event.target.value)}><option>Всички граници</option><option>актуална</option><option>в процес на актуализация</option></select></label>
           {hasFilters && <button className="clear-button" onClick={clearFilters}><X size={14} /> Изчисти</button>}
         </div>}
-        <div className="results-line"><span>ПОКАЗАНИ <b>{filtered.length.toLocaleString('bg-BG')}</b> ОТ {counts.total.toLocaleString('bg-BG')} ЗАПИСА</span><span>ПОСЛЕДНО ОБНОВЯВАНЕ НА ИЗТОЧНИКА: 29.10.2026</span></div>
-        <div className="table-wrap">
-          <table><thead><tr><th>НАИМЕНОВАНИЕ</th><th>КАТЕГОРИЯ</th><th>РЕГИСТЪР №</th><th>СТАТУС НА ГРАНИЦАТА</th><th /></tr></thead>
-            <tbody>{filtered.slice(0, 100).map((item) => <tr key={item.source_code} onClick={() => setSelected(item)} className={selected?.source_code === item.source_code ? 'row-selected' : ''}>
-              <td><span className="territory-name">{item.name_bg}</span><span className="territory-code">КОД {item.source_code}</span></td>
-              <td><span className={`category-tag ${categoryColor[item.category_name] || 'sage'}`}><i />{item.category_name}</span></td>
-              <td className="number-cell">{item.registry_number}</td>
-              <td><span className={`status ${item.boundary_status === 'актуална' ? 'status-current' : 'status-review'}`}><i />{item.boundary_status}</span></td>
-              <td><button className="row-open" aria-label={`Детайли за ${item.name_bg}`}><ArrowUpRight size={17} /></button></td>
-            </tr>)}</tbody>
-          </table>
-          {filtered.length === 0 && <div className="empty-state"><Compass size={28} /><h3>Няма намерени територии</h3><p>Опитай с друго име, номер или премахни филтрите.</p><button onClick={clearFilters}>Изчисти търсенето</button></div>}
+
+        <div className="explorer-grid">
+          <section className="map-panel">
+            <div className="panel-heading"><div><h2>Карта</h2><span>Граници от предоставения GIS слой · EPSG:32635</span></div><label className="map-filter"><input type="checkbox" checked={mapFiltered} onChange={(event) => setMapFiltered(event.target.checked)} /> Само резултатите</label></div>
+            <div className="map-canvas"><TerritoryMap featureMap={featureMap} visible={visible} selectedId={selected?.source_code} onSelect={setSelected} /></div>
+            <div className="map-legend">{categories.map((item) => <span key={item}><i style={{ background: palette[categoryIndex(item)] }} />{item}</span>)}</div>
+            <div className="map-attribution">Геометрия: предоставен Shapefile `zpo_all`. Контурите са опростени за уеб визуализация.</div>
+          </section>
+
+          <aside className="results-panel">
+            <div className="panel-heading results-heading"><div><h2>Територии</h2><span>{filtered.length.toLocaleString('bg-BG')} резултата</span></div><span className="last-update">Източник: ИАОС<br />{latestSourceDate}</span></div>
+            <div className="table-wrap">
+              <table><thead><tr><th>НАИМЕНОВАНИЕ</th><th>КАТЕГОРИЯ</th><th>№</th><th>ГРАНИЦА</th><th /></tr></thead>
+                <tbody>{filtered.slice(0, 150).map((item) => <tr key={item.source_code} onClick={() => setSelected(item)} className={selected?.source_code === item.source_code ? 'row-selected' : ''}>
+                  <td><span className="territory-name">{item.name_bg}</span></td>
+                  <td><span className="category-tag"><i style={{ background: palette[categoryIndex(item.category_name)] }} />{item.category_name}</span></td>
+                  <td className="number-cell">{item.registry_number}</td>
+                  <td><span className={`status ${item.boundary_status === 'актуална' ? 'status-current' : 'status-review'}`}><i />{item.boundary_status}</span></td>
+                  <td><button className="row-open" aria-label={`Покажи ${item.name_bg} на картата`}><ArrowUpRight size={16} /></button></td>
+                </tr>)}</tbody>
+              </table>
+              {!filtered.length && <div className="empty-state"><h3>Няма намерени територии</h3><p>Промени търсенето или филтрите.</p><button onClick={clearFilters}>Изчисти филтрите</button></div>}
+            </div>
+            {filtered.length > 150 && <div className="table-footer">Показани са 150 резултата. Използвай търсенето за по-тесен списък.</div>}
+          </aside>
         </div>
-        {filtered.length > 100 && <div className="table-footer">Показани са първите 100 резултата. Стесни търсенето, за да намериш конкретен запис.</div>}
       </section>
 
-      <footer className="footer"><div className="footer-brand"><span className="brand-mark"><Leaf size={17} /></span> ЗЕЛЕНО ДЕЛО</div><span>Учебен модел на публичен регистър · СПАИТ 2026</span><a href="https://www.eea.government.bg/zpo/en/index.jsp" target="_blank" rel="noreferrer">Официален регистър на ИАОС <ExternalLink size={13} /></a></footer>
+      <footer className="footer"><span>Данни: ИАОС · Пространствени граници от предоставения слой</span><a href="https://www.eea.government.bg/zpo/en/index.jsp" target="_blank" rel="noreferrer">Официален регистър <ExternalLink size={13} /></a></footer>
 
       {selected && <div className="drawer-backdrop" onClick={() => setSelected(null)}><aside className="detail-drawer" onClick={(event) => event.stopPropagation()}>
         <button className="drawer-close" onClick={() => setSelected(null)} aria-label="Затвори"><X size={19} /></button>
-        <div className="eyebrow"><span className="eyebrow-line" /> ДЕТАЙЛИ ЗА ОБЕКТА</div>
         <span className="drawer-code">{selected.source_code}</span><h2>{selected.name_bg}</h2>
-        <span className={`category-tag ${categoryColor[selected.category_name] || 'sage'}`}><i />{selected.category_name}</span>
-        <div className="detail-grid"><div><small>РЕГИСТЪР №</small><b>{selected.registry_number}</b></div><div><small>СТАТУС НА ГРАНИЦАТА</small><b>{selected.boundary_status}</b></div><div><small>НОМЕР НА СЛОЙ</small><b>{selected.partition_code}</b></div><div><small>КОНСИСТЕНТНОСТ НА КАТЕГОРИЯТА</small><b>{selected.category_code_consistent === 'true' ? 'Съвпада' : 'Несъответствие в източника'}</b></div></div>
-        <div className="detail-note"><MapPin size={17} /><span>Площта, местоположението и правните актове не присъстват в текущия CSV слой. Отвори официалния запис за наличните допълнителни данни.</span></div>
+        <span className="category-tag"><i style={{ background: palette[categoryIndex(selected.category_name)] }} />{selected.category_name}</span>
+        <div className="detail-grid"><div><small>РЕГИСТЪР №</small><b>{selected.registry_number}</b></div><div><small>СТАТУС НА ГРАНИЦАТА</small><b>{selected.boundary_status}</b></div><div><small>КАТЕГОРИЯ</small><b>{selected.category_name}</b></div><div><small>СЪГЛАСУВАНОСТ НА КАТЕГОРИЯТА</small><b>{selected.category_code_consistent === 'true' ? 'Да' : 'Несъответствие в източника'}</b></div></div>
+        <div className="detail-note"><MapPin size={17} /><span>Избраният контур е маркиран на картата. Този CSV слой не съдържа площ, местоположение или данни за правните актове.</span></div>
         <a className="source-link" href={selected.source_url} target="_blank" rel="noreferrer">Отвори записа в ИАОС <ArrowUpRight size={16} /></a>
-        {selected.map_url && <a className="source-link secondary-link" href={selected.map_url} target="_blank" rel="noreferrer">Отвори картата <ArrowUpRight size={16} /></a>}
       </aside></div>}
     </main>
   );
