@@ -3,6 +3,7 @@
 import json
 import struct
 from pathlib import Path
+from pyproj import Transformer
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,6 +70,7 @@ def simplify(points, tolerance):
 
 
 def main():
+    transformer = Transformer.from_crs("EPSG:32635", "EPSG:4326", always_xy=True)
     attributes = read_dbf(DBF)
     raw = SHP.read_bytes()
     min_x, min_y, max_x, max_y = struct.unpack_from("<4d", raw, 36)
@@ -87,11 +89,11 @@ def main():
         shape = raw[position + 8:position + 8 + content_bytes]
         position += 8 + content_bytes
         if len(shape) < 44:
-            paths.append(None)
+            paths.append((None, None, []))
             continue
         shape_type = struct.unpack_from("<i", shape, 0)[0]
         if shape_type == 0:
-            paths.append(None)
+            paths.append((None, None, []))
             continue
         part_count, point_count = struct.unpack_from("<ii", shape, 36)
         parts = struct.unpack_from(f"<{part_count}i", shape, 44)
@@ -99,6 +101,8 @@ def main():
         coordinates = [struct.unpack_from("<2d", shape, points_start + index * 16)
                        for index in range(point_count)]
         path_parts = []
+        geographic_points = []
+        geographic_rings = []
         for part_index, start in enumerate(parts):
             end = parts[part_index + 1] if part_index + 1 < len(parts) else point_count
             ring = simplify(coordinates[start:end], 65)
@@ -108,21 +112,61 @@ def main():
             path_parts.append("M" + "L".join(
                 f"{x:.0f} {y:.0f}" for x, y in projected
             ) + "Z")
-        paths.append("".join(path_parts) or None)
+            geographic_rings.append([
+                [longitude, latitude]
+                for longitude, latitude in (transformer.transform(x, y) for x, y in ring)
+            ])
+            geographic_points.extend(transformer.transform(x, y) for x, y in ring)
+        if geographic_points:
+            longitudes = [point[0] for point in geographic_points]
+            latitudes = [point[1] for point in geographic_points]
+            geographic_bounds = [min(latitudes), min(longitudes), max(latitudes), max(longitudes)]
+        else:
+            geographic_bounds = None
+        paths.append(("".join(path_parts) or None, geographic_bounds, geographic_rings))
 
     features = []
-    for record, path in zip(attributes, paths):
+    for record, path_entry in zip(attributes, paths):
+        path, geographic_bounds, geographic_rings = path_entry
         if not path:
             continue
         code = record.get("CODE1", "")
         code_parts = code.split("_")
         category = code_parts[1] if len(code_parts) == 3 else record.get("CATEGOR", "")
+        if len(geographic_rings) == 1:
+            geometry = {"type": "Polygon", "coordinates": geographic_rings}
+        else:
+            geometry = {
+                "type": "MultiPolygon",
+                "coordinates": [[ring] for ring in geographic_rings],
+            }
+        # Recompute each feature's geographic bounds directly from the source
+        # geometry so zoom operations do not depend on an approximate SVG mapping.
+        positions = []
+        position = 100
+        while position + 8 <= len(raw):
+            content_bytes = struct.unpack_from(">i", raw, position + 4)[0] * 2
+            shape = raw[position + 8:position + 8 + content_bytes]
+            position += 8 + content_bytes
+            if len(shape) < 44:
+                continue
+            shape_type = struct.unpack_from("<i", shape, 0)[0]
+            if shape_type == 0:
+                continue
+            part_count, point_count = struct.unpack_from("<ii", shape, 36)
+            points_start = 44 + part_count * 4
+            coordinates = [struct.unpack_from("<2d", shape, points_start + index * 16)
+                           for index in range(point_count)]
+            positions.append(coordinates)
+
         features.append({
             "id": code,
             "name": record.get("NAME1", ""),
             "category": record.get("C_TYPE", ""),
             "status": record.get("STATE1", ""),
             "d": path,
+            "bounds": geographic_bounds,
+            "geometry": geometry,
         })
 
     OUT.parent.mkdir(parents=True, exist_ok=True)

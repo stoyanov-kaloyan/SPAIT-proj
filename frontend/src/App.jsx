@@ -91,29 +91,76 @@ function TerritoryMap({ featureMap, visible, selectedId, fitTargetId, onSelect }
       if (selectedPath) svg.appendChild(selectedPath);
     }
 
-    overlayRef.current = L.svgOverlay(svg, bounds, {
-      interactive: true,
-      opacity: 1,
-    }).addTo(map);
+    const geoJsonFeatures = mapData.features
+      .filter((feature) => visible.has(feature.id) && feature.geometry)
+      .map((feature) => ({
+        type: 'Feature',
+        id: feature.id,
+        properties: {
+          id: feature.id,
+          name: feature.name,
+          category: feature.category,
+        },
+        geometry: feature.geometry,
+      }));
+
+    overlayRef.current = L.geoJSON(
+      { type: 'FeatureCollection', features: geoJsonFeatures },
+      {
+        style: (geoJsonFeature) => {
+          const row = featureMap.get(geoJsonFeature.id);
+          const selected = selectedId === geoJsonFeature.id;
+          return {
+            color: selected ? '#173d2d' : '#c9d4c5',
+            weight: selected ? 1.1 : 0.75,
+            opacity: 1,
+            fillColor: row ? palette[categoryIndex(row.category_name)] : '#66896b',
+            fillOpacity: selected ? 0.22 : 0.68,
+            interactive: selected ? false : true,
+          };
+        },
+        onEachFeature: (geoJsonFeature, layer) => {
+          const row = featureMap.get(geoJsonFeature.id);
+          if (!row) return;
+          if (selectedId === geoJsonFeature.id) {
+            layer.options.interactive = false;
+            if (layer._path) {
+              layer._path.classList.remove('leaflet-interactive');
+              layer._path.style.pointerEvents = 'none';
+            }
+            return;
+          }
+          layer.on('click', (event) => {
+            L.DomEvent.stopPropagation(event);
+            onSelect(row);
+          });
+          layer.bindTooltip(`${row.name_bg} · ${row.category_name}`, {
+            sticky: true,
+            direction: 'top',
+          });
+        },
+      },
+    ).addTo(map);
+
+    if (selectedId) {
+      const selectedLayer = overlayRef.current.getLayers()
+        .find((layer) => layer.feature?.id === selectedId);
+      if (selectedLayer?.bringToFront) selectedLayer.bringToFront();
+    }
 
     if (fitTargetId) {
-      const selectedPath = svg.querySelector(`[data-source-code="${fitTargetId}"]`);
-      if (selectedPath) {
-        const box = selectedPath.getBBox();
-        const westPoint = L.point(box.x, box.y);
-        const eastPoint = L.point(box.x + box.width, box.y + box.height);
-        const southwest = bounds[0];
-        const northeast = bounds[1];
-        const west = southwest[1] + (westPoint.x / mapData.viewBox[2]) * (northeast[1] - southwest[1]);
-        const east = southwest[1] + (eastPoint.x / mapData.viewBox[2]) * (northeast[1] - southwest[1]);
-        const north = southwest[0] + ((mapData.viewBox[3] - westPoint.y) / mapData.viewBox[3]) * (northeast[0] - southwest[0]);
-        const south = southwest[0] + ((mapData.viewBox[3] - eastPoint.y) / mapData.viewBox[3]) * (northeast[0] - southwest[0]);
-        const selectedBounds = [[south, west], [north, east]];
+      const feature = mapData.features.find((item) => item.id === fitTargetId);
+      if (feature?.bounds) {
+        const [south, west, north, east] = feature.bounds;
+        const latSpan = north - south;
+        const lngSpan = east - west;
         const center = [(south + north) / 2, (west + east) / 2];
-        if (box.width * box.height < 150) {
-          map.setView(center, 16, { animate: true });
+        if (latSpan < 0.0005 && lngSpan < 0.0005) {
+          map.setView(center, 18, { animate: true });
+        } else if (latSpan < 0.002 && lngSpan < 0.002) {
+          map.setView(center, 17, { animate: true });
         } else {
-          map.fitBounds(selectedBounds, {
+          map.fitBounds([[south, west], [north, east]], {
             maxZoom: 15,
             paddingTopLeft: [80, 80],
             paddingBottomRight: [80, 80],
@@ -122,73 +169,6 @@ function TerritoryMap({ featureMap, visible, selectedId, fitTargetId, onSelect }
         }
       }
     }
-
-    let pointerStart = null;
-    let dragged = false;
-    svg.addEventListener('pointerdown', (event) => {
-      pointerStart = { x: event.clientX, y: event.clientY };
-      dragged = false;
-    });
-    svg.addEventListener('pointermove', (event) => {
-      if (!pointerStart) return;
-      if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 6) {
-        dragged = true;
-      }
-    });
-    svg.addEventListener('pointerup', () => {
-      pointerStart = null;
-    });
-    svg.addEventListener('pointercancel', () => {
-      pointerStart = null;
-      dragged = true;
-    });
-    svg.addEventListener('click', (event) => {
-      if (dragged) {
-        dragged = false;
-        return;
-      }
-      event.stopPropagation();
-      const matrix = svg.getScreenCTM();
-      if (!matrix) return;
-
-      const svgPoint = svg.createSVGPoint();
-      svgPoint.x = event.clientX;
-      svgPoint.y = event.clientY;
-      let localPoint;
-      try {
-        localPoint = svgPoint.matrixTransform(matrix.inverse());
-      } catch {
-        return;
-      }
-
-      const candidates = Array.from(svg.querySelectorAll('.map-feature')).filter((path) => {
-        try {
-          return path.isPointInFill(localPoint);
-        } catch {
-          const box = path.getBBox();
-          return localPoint.x >= box.x && localPoint.x <= box.x + box.width
-            && localPoint.y >= box.y && localPoint.y <= box.y + box.height;
-        }
-      }).sort((a, b) => {
-        const aBox = a.getBBox();
-        const bBox = b.getBBox();
-        return (aBox.width * aBox.height) - (bBox.width * bBox.height);
-      });
-
-      if (!candidates.length) return;
-      const clickX = Math.round(event.clientX);
-      const clickY = Math.round(event.clientY);
-      const isSamePosition = overlapClickRef.current.x === clickX
-        && overlapClickRef.current.y === clickY;
-      if (!isSamePosition) overlapClickRef.current.index = 0;
-      else overlapClickRef.current.index = (overlapClickRef.current.index + 1) % candidates.length;
-      overlapClickRef.current.x = clickX;
-      overlapClickRef.current.y = clickY;
-
-      const sourceCode = candidates[overlapClickRef.current.index].dataset.sourceCode;
-      const row = featureMap.get(sourceCode);
-      if (row) onSelect(row);
-    });
   }, [featureMap, visible, selectedId, fitTargetId, onSelect, bounds]);
 
   return (
