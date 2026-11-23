@@ -18,9 +18,9 @@ import urllib.request
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parent
 DBF = ROOT / "zpo_all" / "zpo_all.dbf"
-OUT = ROOT / "data" / "protected_territories.csv"
+OUT = ROOT / "protected_territories.csv"
 CACHE = ROOT / "data" / "cache" / "registry_pages"
 BASE_URL = (
     "https://pdbase.eea.government.bg/zpo/bg/area.jsp"
@@ -191,19 +191,6 @@ def main() -> None:
             "metadata_id": source["METAFILE1"],
             "map_url": source["MAP_URL"],
             "source_url": url,
-            "area_ha": "",
-            "location": "",
-            "responsible_authority": "",
-            "designation_documents": "",
-            "designation_order_number": "",
-            "designation_order_date": "",
-            "state_gazette_issue": "",
-            "state_gazette_year": "",
-            "change_documents": "",
-            "designation_purpose": "",
-            "protected_subject": "",
-            "restrictions": "",
-            "overlaps": "",
             "fetch_status": "not_requested" if args.no_fetch else "pending",
         }
         should_fetch = not args.no_fetch and (not args.limit or index <= args.limit)
@@ -222,7 +209,8 @@ def main() -> None:
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(output_rows[0]))
+        fieldnames = list(dict.fromkeys(key for row in output_rows for key in row))
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(output_rows)
     print(f"Wrote {len(output_rows)} records to {args.output}")

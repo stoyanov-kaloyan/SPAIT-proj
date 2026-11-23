@@ -12,17 +12,4 @@ source_file,text,no,Идентификатор на изходния слой,zp
 metadata_id,text,no,Идентификатор на метаданните,zpo_all.dbf/METAFILE1
 map_url,url,no,Връзка за картна визуализация,zpo_all.dbf/MAP_URL
 source_url,url,yes,Официална страница на регистровия запис,derived official URL
-area_ha,decimal,no,Официална площ в хектари,ИАОС online register
-location,text,no,Области общини и населени места,ИАОС online register
-responsible_authority,text,no,РИОСВ или дирекция на национален парк,ИАОС online register
-designation_documents,text,no,Пълен текст за актовете за обявяване,ИАОС online register
-designation_order_number,text,no,Номер на първоначалната заповед,ИАОС online register
-designation_order_date,date,no,Дата във формат DD.MM.YYYY,ИАОС online register
-state_gazette_issue,integer,no,Брой на Държавен вестник,ИАОС online register
-state_gazette_year,integer,no,Година на Държавен вестник,ИАОС online register
-change_documents,text,no,Актове за промени и актуализации,ИАОС online register
-designation_purpose,text,no,Цели на обявяването,ИАОС online register
-protected_subject,text,no,Видове местообитания и други предмети на опазване,ИАОС online register
-restrictions,text,no,Режим и забранени или разрешени дейности,ИАОС online register
-overlaps,text,no,Припокриване с други защитени обекти,ИАОС online register
 fetch_status,text,yes,Резултат от автоматичното извличане,generated
