@@ -1,5 +1,7 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
-import { ArrowDownUp, ArrowUpRight, ChevronDown, Download, ExternalLink, Filter, MapPin, Search, X } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowUpRight, ChevronDown, Download, ExternalLink, Filter, MapPin, Search, X } from 'lucide-react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { categories, csvText, latestSourceDate, territories } from './data.js';
 import mapData from './territory-map.json';
 
@@ -7,19 +9,151 @@ const palette = ['#66896b', '#bd9b55', '#496f58', '#5b8882', '#7189a0', '#81779c
 const categoryIndex = (name) => Math.max(0, categories.indexOf(name));
 
 function TerritoryMap({ featureMap, visible, selectedId, onSelect }) {
-  const viewBox = mapData.viewBox.join(' ');
+  const containerRef = useRef(null);
+  const mapRef = useRef(null);
+  const overlayRef = useRef(null);
+  const overlapClickRef = useRef({ x: null, y: null, index: 0 });
+  const bounds = useMemo(() => [[41.20, 22.25], [44.25, 28.62]], []);
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    const map = L.map(containerRef.current, {
+      zoomControl: true,
+      attributionControl: true,
+      minZoom: 6,
+      maxZoom: 18,
+    });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map);
+    map.fitBounds(bounds, { padding: [8, 8] });
+    mapRef.current = map;
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [bounds]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (overlayRef.current) {
+      map.removeLayer(overlayRef.current);
+      overlayRef.current = null;
+    }
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', mapData.viewBox.join(' '));
+    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', 'Защитени територии в България');
+
+    mapData.features.forEach((feature) => {
+      const row = featureMap.get(feature.id);
+      if (!row || !visible.has(feature.id)) return;
+      const selected = selectedId === feature.id;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', feature.d);
+      path.setAttribute('fill', selected ? '#173d2d' : palette[categoryIndex(row.category_name)]);
+      path.setAttribute('fill-opacity', selected ? '0.95' : '0.68');
+      path.setAttribute('stroke', selected ? '#173d2d' : '#c9d4c5');
+      path.setAttribute('fill-rule', 'evenodd');
+      path.setAttribute('class', 'map-feature');
+      path.dataset.sourceCode = feature.id;
+      path.style.cursor = 'pointer';
+      const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      title.textContent = `${row.name_bg} · ${row.category_name}`;
+      path.appendChild(title);
+      svg.appendChild(path);
+    });
+
+    const visiblePaths = Array.from(svg.querySelectorAll('.map-feature'));
+    visiblePaths.forEach((path) => {
+      const bounds = path.getBBox();
+      const characteristicSize = Math.sqrt(bounds.width * bounds.height);
+      const outlineWidth = Math.max(0.18, Math.min(1.1, characteristicSize * 0.018));
+      path.setAttribute('stroke-width', outlineWidth.toFixed(2));
+      path.style.setProperty('--outline-width', outlineWidth.toFixed(2));
+    });
+
+    // DOM order determines pointer hit priority. Reorder visible polygons from
+    // largest to smallest so compact territories remain on top and clickable.
+    const paths = Array.from(svg.querySelectorAll('.map-feature'));
+    paths.sort((a, b) => {
+      const aBox = a.getBBox();
+      const bBox = b.getBBox();
+      return (bBox.width * bBox.height) - (aBox.width * aBox.height);
+    }).forEach((path) => svg.appendChild(path));
+
+    overlayRef.current = L.svgOverlay(svg, bounds, {
+      interactive: true,
+      opacity: 1,
+    }).addTo(map);
+
+    if (selectedId) {
+      const selectedPath = svg.querySelector(`[data-source-code="${selectedId}"]`);
+      if (selectedPath) {
+        const box = selectedPath.getBBox();
+        const west = 22.25 + (box.x / mapData.viewBox[2]) * 6.37;
+        const east = 22.25 + ((box.x + box.width) / mapData.viewBox[2]) * 6.37;
+        const north = 44.25 - (box.y / mapData.viewBox[3]) * 3.03;
+        const south = 44.25 - ((box.y + box.height) / mapData.viewBox[3]) * 3.03;
+        map.fitBounds([[south, west], [north, east]], {
+          maxZoom: 15,
+          padding: [28, 28],
+          animate: true,
+        });
+      }
+    }
+
+    svg.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const matrix = svg.getScreenCTM();
+      if (!matrix) return;
+
+      const svgPoint = svg.createSVGPoint();
+      svgPoint.x = event.clientX;
+      svgPoint.y = event.clientY;
+      let localPoint;
+      try {
+        localPoint = svgPoint.matrixTransform(matrix.inverse());
+      } catch {
+        return;
+      }
+
+      const candidates = Array.from(svg.querySelectorAll('.map-feature')).filter((path) => {
+        try {
+          return path.isPointInFill(localPoint);
+        } catch {
+          const box = path.getBBox();
+          return localPoint.x >= box.x && localPoint.x <= box.x + box.width
+            && localPoint.y >= box.y && localPoint.y <= box.y + box.height;
+        }
+      }).sort((a, b) => {
+        const aBox = a.getBBox();
+        const bBox = b.getBBox();
+        return (aBox.width * aBox.height) - (bBox.width * bBox.height);
+      });
+
+      if (!candidates.length) return;
+      const clickX = Math.round(event.clientX);
+      const clickY = Math.round(event.clientY);
+      const isSamePosition = overlapClickRef.current.x === clickX
+        && overlapClickRef.current.y === clickY;
+      if (!isSamePosition) overlapClickRef.current.index = 0;
+      else overlapClickRef.current.index = (overlapClickRef.current.index + 1) % candidates.length;
+      overlapClickRef.current.x = clickX;
+      overlapClickRef.current.y = clickY;
+
+      const sourceCode = candidates[overlapClickRef.current.index].dataset.sourceCode;
+      const row = featureMap.get(sourceCode);
+      if (row) onSelect(row);
+    });
+  }, [featureMap, visible, selectedId, onSelect, bounds]);
+
   return (
-    <svg className="map-svg" viewBox={viewBox} role="img" aria-label="Карта на защитените територии в България" preserveAspectRatio="xMidYMid meet">
-      {mapData.features.map((feature) => {
-        const row = featureMap.get(feature.id);
-        if (!row || !visible.has(feature.id)) return null;
-        const selected = selectedId === feature.id;
-        return <path key={feature.id} d={feature.d} fill={selected ? '#173d2d' : palette[categoryIndex(row.category_name)]}
-          fillOpacity={selected ? 0.95 : 0.68} stroke={selected ? '#f6f8f4' : '#dbe3d8'} strokeWidth={selected ? 2.5 : 0.7}
-          fillRule="evenodd" className="map-feature"
-          onClick={() => onSelect(row)}><title>{row.name_bg} · {row.category_name}</title></path>;
-      })}
-    </svg>
+    <div ref={containerRef} className="interactive-map" role="application" aria-label="Карта на защитените територии в България" />
   );
 }
 
@@ -27,7 +161,7 @@ function App() {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('Всички категории');
   const [status, setStatus] = useState('Всички граници');
-  const [sortBy, setSortBy] = useState('name_bg');
+  const [sortBy, setSortBy] = useState('area_ha');
   const [selected, setSelected] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [mapFiltered, setMapFiltered] = useState(false);
@@ -38,6 +172,7 @@ function App() {
     total: territories.length,
     current: territories.filter((item) => item.boundary_status === 'актуална').length,
     updating: territories.filter((item) => item.boundary_status !== 'актуална').length,
+    area: territories.reduce((sum, item) => sum + (Number(item.area_ha) || 0), 0),
   }), []);
 
   const filtered = useMemo(() => {
@@ -48,9 +183,11 @@ function App() {
       const matchesCategory = category === 'Всички категории' || item.category_name === category;
       const matchesStatus = status === 'Всички граници' || item.boundary_status === status;
       return matchesTerm && matchesCategory && matchesStatus;
-    }).sort((a, b) => sortBy === 'registry_number'
-      ? Number(a.registry_number) - Number(b.registry_number)
-      : a.name_bg.localeCompare(b.name_bg, 'bg'));
+    }).sort((a, b) => {
+      if (sortBy === 'registry_number') return Number(a.registry_number) - Number(b.registry_number);
+      if (sortBy === 'area_ha') return (Number(b.area_ha) || 0) - (Number(a.area_ha) || 0);
+      return a.name_bg.localeCompare(b.name_bg, 'bg');
+    });
   }, [query, category, status, sortBy]);
 
   const featureMap = useMemo(() => new Map(territories.map((item) => [item.source_code, item])), []);
@@ -78,14 +215,14 @@ function App() {
 
       <section className="summary" id="top">
         <div><h1>Защитени територии</h1><p>Интерактивен преглед на наличните записи и граници.</p></div>
-        <div className="summary-stats"><div><b>{counts.total.toLocaleString('bg-BG')}</b><span>ЗАПИСА</span></div><div><b>{counts.current.toLocaleString('bg-BG')}</b><span>АКТУАЛНИ ГРАНИЦИ</span></div><div><b>{counts.updating}</b><span>В АКТУАЛИЗАЦИЯ</span></div></div>
+        <div className="summary-stats"><div><b>{counts.total.toLocaleString('bg-BG')}</b><span>ЗАПИСА</span></div><div><b>{counts.area.toLocaleString('bg-BG', { maximumFractionDigits: 0 })}</b><span>ХА ОБЩА ПЛОЩ</span></div><div><b>{counts.current.toLocaleString('bg-BG')}</b><span>АКТУАЛНИ ГРАНИЦИ</span></div><div><b>{counts.updating}</b><span>В АКТУАЛИЗАЦИЯ</span></div></div>
       </section>
 
       <section className="explorer" id="explore">
         <div className="toolbar">
           <label className="search-box"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Търси име, номер или код…" /></label>
           <button className={`filter-toggle ${showFilters ? 'pressed' : ''}`} onClick={() => setShowFilters(!showFilters)}><Filter size={16} /> Филтри <ChevronDown size={15} /></button>
-          <label className="sort-select"><span>СОРТИРАНЕ</span><select value={sortBy} onChange={(event) => setSortBy(event.target.value)}><option value="name_bg">По име</option><option value="registry_number">По номер</option></select></label>
+          <label className="sort-select"><span>СОРТИРАНЕ</span><select value={sortBy} onChange={(event) => setSortBy(event.target.value)}><option value="area_ha">По площ</option><option value="name_bg">По име</option><option value="registry_number">По номер</option></select></label>
         </div>
         {showFilters && <div className="filter-panel">
           <label>Категория<select value={category} onChange={(event) => setCategory(event.target.value)}><option>Всички категории</option>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -104,11 +241,12 @@ function App() {
           <aside className="results-panel">
             <div className="panel-heading results-heading"><div><h2>Територии</h2><span>{filtered.length.toLocaleString('bg-BG')} резултата</span></div><span className="last-update">Източник: ИАОС<br />{latestSourceDate}</span></div>
             <div className="table-wrap">
-              <table><thead><tr><th>НАИМЕНОВАНИЕ</th><th>КАТЕГОРИЯ</th><th>№</th><th>ГРАНИЦА</th><th /></tr></thead>
+              <table><thead><tr><th>НАИМЕНОВАНИЕ</th><th>КАТЕГОРИЯ</th><th>№</th><th>ПЛОЩ, ХА</th><th>ГРАНИЦА</th><th /></tr></thead>
                 <tbody>{pageRows.map((item) => <tr key={item.source_code} onClick={() => setSelected(item)} className={selected?.source_code === item.source_code ? 'row-selected' : ''}>
                   <td><span className="territory-name">{item.name_bg}</span></td>
                   <td><span className="category-tag"><i style={{ background: palette[categoryIndex(item.category_name)] }} />{item.category_name}</span></td>
                   <td className="number-cell">{item.registry_number}</td>
+                  <td className="number-cell">{Number(item.area_ha).toLocaleString('bg-BG', { maximumFractionDigits: 2 })}</td>
                   <td><span className={`status ${item.boundary_status === 'актуална' ? 'status-current' : 'status-review'}`}><i />{item.boundary_status}</span></td>
                   <td><button className="row-open" aria-label={`Покажи ${item.name_bg} на картата`}><ArrowUpRight size={16} /></button></td>
                 </tr>)}</tbody>
@@ -130,7 +268,7 @@ function App() {
         <button className="drawer-close" onClick={() => setSelected(null)} aria-label="Затвори"><X size={19} /></button>
         <span className="drawer-code">{selected.source_code}</span><h2>{selected.name_bg}</h2>
         <span className="category-tag"><i style={{ background: palette[categoryIndex(selected.category_name)] }} />{selected.category_name}</span>
-        <div className="detail-grid"><div><small>РЕГИСТЪР №</small><b>{selected.registry_number}</b></div><div><small>СТАТУС НА ГРАНИЦАТА</small><b>{selected.boundary_status}</b></div><div><small>КАТЕГОРИЯ</small><b>{selected.category_name}</b></div><div><small>СЪГЛАСУВАНОСТ НА КАТЕГОРИЯТА</small><b>{selected.category_code_consistent === 'true' ? 'Да' : 'Несъответствие в източника'}</b></div></div>
+        <div className="detail-grid"><div><small>РЕГИСТЪР №</small><b>{selected.registry_number}</b></div><div><small>ПЛОЩ</small><b>{Number(selected.area_ha).toLocaleString('bg-BG', { maximumFractionDigits: 2 })} ха</b></div><div><small>СТАТУС НА ГРАНИЦАТА</small><b>{selected.boundary_status}</b></div><div><small>КАТЕГОРИЯ</small><b>{selected.category_name}</b></div><div><small>СЪГЛАСУВАНОСТ НА КАТЕГОРИЯТА</small><b>{selected.category_code_consistent === 'true' ? 'Да' : 'Несъответствие в източника'}</b></div></div>
         <div className="detail-note"><MapPin size={17} /><span>Избраният контур е маркиран на картата. Този CSV слой не съдържа площ, местоположение или данни за правните актове.</span></div>
         <a className="source-link" href={selected.source_url} target="_blank" rel="noreferrer">Отвори записа в ИАОС <ArrowUpRight size={16} /></a>
       </aside></div>}
