@@ -2,13 +2,13 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, ChevronDown, Download, ExternalLink, Filter, MapPin, Search, X } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { categories, csvText, latestSourceDate, territories } from './data.js';
-import mapData from './territory-map.json';
+import { categories, csvText, territories } from './data.js';
+import mapData from '../../model/territory-map.json';
 
 const palette = ['#66896b', '#bd9b55', '#496f58', '#5b8882', '#7189a0', '#81779c'];
 const categoryIndex = (name) => Math.max(0, categories.indexOf(name));
 
-function TerritoryMap({ featureMap, visible, selectedId, onSelect }) {
+function TerritoryMap({ featureMap, visible, selectedId, fitTargetId, onSelect }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const overlayRef = useRef(null);
@@ -55,8 +55,8 @@ function TerritoryMap({ featureMap, visible, selectedId, onSelect }) {
       const selected = selectedId === feature.id;
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', feature.d);
-      path.setAttribute('fill', selected ? '#173d2d' : palette[categoryIndex(row.category_name)]);
-      path.setAttribute('fill-opacity', selected ? '0.95' : '0.68');
+      path.setAttribute('fill', palette[categoryIndex(row.category_name)]);
+      path.setAttribute('fill-opacity', selected ? '0.98' : '0.68');
       path.setAttribute('stroke', selected ? '#173d2d' : '#c9d4c5');
       path.setAttribute('fill-rule', 'evenodd');
       path.setAttribute('class', 'map-feature');
@@ -86,28 +86,67 @@ function TerritoryMap({ featureMap, visible, selectedId, onSelect }) {
       return (bBox.width * bBox.height) - (aBox.width * aBox.height);
     }).forEach((path) => svg.appendChild(path));
 
+    if (selectedId) {
+      const selectedPath = svg.querySelector(`[data-source-code="${selectedId}"]`);
+      if (selectedPath) svg.appendChild(selectedPath);
+    }
+
     overlayRef.current = L.svgOverlay(svg, bounds, {
       interactive: true,
       opacity: 1,
     }).addTo(map);
 
-    if (selectedId) {
-      const selectedPath = svg.querySelector(`[data-source-code="${selectedId}"]`);
+    if (fitTargetId) {
+      const selectedPath = svg.querySelector(`[data-source-code="${fitTargetId}"]`);
       if (selectedPath) {
         const box = selectedPath.getBBox();
-        const west = 22.25 + (box.x / mapData.viewBox[2]) * 6.37;
-        const east = 22.25 + ((box.x + box.width) / mapData.viewBox[2]) * 6.37;
-        const north = 44.25 - (box.y / mapData.viewBox[3]) * 3.03;
-        const south = 44.25 - ((box.y + box.height) / mapData.viewBox[3]) * 3.03;
-        map.fitBounds([[south, west], [north, east]], {
-          maxZoom: 15,
-          padding: [28, 28],
-          animate: true,
-        });
+        const westPoint = L.point(box.x, box.y);
+        const eastPoint = L.point(box.x + box.width, box.y + box.height);
+        const southwest = bounds[0];
+        const northeast = bounds[1];
+        const west = southwest[1] + (westPoint.x / mapData.viewBox[2]) * (northeast[1] - southwest[1]);
+        const east = southwest[1] + (eastPoint.x / mapData.viewBox[2]) * (northeast[1] - southwest[1]);
+        const north = southwest[0] + ((mapData.viewBox[3] - westPoint.y) / mapData.viewBox[3]) * (northeast[0] - southwest[0]);
+        const south = southwest[0] + ((mapData.viewBox[3] - eastPoint.y) / mapData.viewBox[3]) * (northeast[0] - southwest[0]);
+        const selectedBounds = [[south, west], [north, east]];
+        const center = [(south + north) / 2, (west + east) / 2];
+        if (box.width * box.height < 150) {
+          map.setView(center, 16, { animate: true });
+        } else {
+          map.fitBounds(selectedBounds, {
+            maxZoom: 15,
+            paddingTopLeft: [80, 80],
+            paddingBottomRight: [80, 80],
+            animate: true,
+          });
+        }
       }
     }
 
+    let pointerStart = null;
+    let dragged = false;
+    svg.addEventListener('pointerdown', (event) => {
+      pointerStart = { x: event.clientX, y: event.clientY };
+      dragged = false;
+    });
+    svg.addEventListener('pointermove', (event) => {
+      if (!pointerStart) return;
+      if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 6) {
+        dragged = true;
+      }
+    });
+    svg.addEventListener('pointerup', () => {
+      pointerStart = null;
+    });
+    svg.addEventListener('pointercancel', () => {
+      pointerStart = null;
+      dragged = true;
+    });
     svg.addEventListener('click', (event) => {
+      if (dragged) {
+        dragged = false;
+        return;
+      }
       event.stopPropagation();
       const matrix = svg.getScreenCTM();
       if (!matrix) return;
@@ -150,7 +189,7 @@ function TerritoryMap({ featureMap, visible, selectedId, onSelect }) {
       const row = featureMap.get(sourceCode);
       if (row) onSelect(row);
     });
-  }, [featureMap, visible, selectedId, onSelect, bounds]);
+  }, [featureMap, visible, selectedId, fitTargetId, onSelect, bounds]);
 
   return (
     <div ref={containerRef} className="interactive-map" role="application" aria-label="Карта на защитените територии в България" />
@@ -161,8 +200,9 @@ function App() {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('Всички категории');
   const [status, setStatus] = useState('Всички граници');
-  const [sortBy, setSortBy] = useState('area_ha');
+  const [sortBy, setSortBy] = useState('name_bg');
   const [selected, setSelected] = useState(null);
+  const [fitTargetId, setFitTargetId] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [mapFiltered, setMapFiltered] = useState(false);
   const [page, setPage] = useState(1);
@@ -172,7 +212,6 @@ function App() {
     total: territories.length,
     current: territories.filter((item) => item.boundary_status === 'актуална').length,
     updating: territories.filter((item) => item.boundary_status !== 'актуална').length,
-    area: territories.reduce((sum, item) => sum + (Number(item.area_ha) || 0), 0),
   }), []);
 
   const filtered = useMemo(() => {
@@ -185,7 +224,6 @@ function App() {
       return matchesTerm && matchesCategory && matchesStatus;
     }).sort((a, b) => {
       if (sortBy === 'registry_number') return Number(a.registry_number) - Number(b.registry_number);
-      if (sortBy === 'area_ha') return (Number(b.area_ha) || 0) - (Number(a.area_ha) || 0);
       return a.name_bg.localeCompare(b.name_bg, 'bg');
     });
   }, [query, category, status, sortBy]);
@@ -194,7 +232,7 @@ function App() {
   const visible = useMemo(() => new Set((mapFiltered ? filtered : territories).map((item) => item.source_code)), [filtered, mapFiltered]);
   const downloadCsv = () => {
     const url = URL.createObjectURL(new Blob(['\ufeff', csvText], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a'); link.href = url; link.download = 'protected_territories.csv'; link.click(); URL.revokeObjectURL(url);
+    const link = document.createElement('a'); link.href = url; link.download = 'protected-areas.csv'; link.click(); URL.revokeObjectURL(url);
   };
   const clearFilters = () => { setQuery(''); setCategory('Всички категории'); setStatus('Всички граници'); };
   const hasFilters = query || category !== 'Всички категории' || status !== 'Всички граници';
@@ -209,44 +247,44 @@ function App() {
     <main className="app-shell">
       <header className="topbar">
         <a className="brand" href="#top"><span className="brand-mark"><MapPin size={17} /></span><span>РЕГИСТЪР НА ЗАЩИТЕНИТЕ ТЕРИТОРИИ</span></a>
-        <div className="header-meta">БЪЛГАРИЯ <span /> {counts.total.toLocaleString('bg-BG')} ЗАПИСА</div>
+        <div className="header-meta">БЪЛГАРИЯ <span /> {counts.total.toLocaleString('bg-BG')} ЗАПИСИ</div>
         <button className="download-button" onClick={downloadCsv}><Download size={16} /> CSV</button>
       </header>
 
       <section className="summary" id="top">
         <div><h1>Защитени територии</h1><p>Интерактивен преглед на наличните записи и граници.</p></div>
-        <div className="summary-stats"><div><b>{counts.total.toLocaleString('bg-BG')}</b><span>ЗАПИСА</span></div><div><b>{counts.area.toLocaleString('bg-BG', { maximumFractionDigits: 0 })}</b><span>ХА ОБЩА ПЛОЩ</span></div><div><b>{counts.current.toLocaleString('bg-BG')}</b><span>АКТУАЛНИ ГРАНИЦИ</span></div><div><b>{counts.updating}</b><span>В АКТУАЛИЗАЦИЯ</span></div></div>
+        <div className="summary-stats"><div><b>{counts.total.toLocaleString('bg-BG')}</b><span>ЗАПИСИ</span></div><div><b>{counts.current.toLocaleString('bg-BG')}</b><span>АКТУАЛНИ ГРАНИЦИ</span></div><div><b>{counts.updating}</b><span>В АКТУАЛИЗАЦИЯ</span></div></div>
       </section>
 
       <section className="explorer" id="explore">
         <div className="toolbar">
           <label className="search-box"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Търси име, номер или код…" /></label>
           <button className={`filter-toggle ${showFilters ? 'pressed' : ''}`} onClick={() => setShowFilters(!showFilters)}><Filter size={16} /> Филтри <ChevronDown size={15} /></button>
-          <label className="sort-select"><span>СОРТИРАНЕ</span><select value={sortBy} onChange={(event) => setSortBy(event.target.value)}><option value="area_ha">По площ</option><option value="name_bg">По име</option><option value="registry_number">По номер</option></select></label>
+          <label className="sort-select"><span>СОРТИРАНЕ</span><select value={sortBy} onChange={(event) => setSortBy(event.target.value)}><option value="name_bg">По име</option><option value="registry_number">По номер</option></select></label>
         </div>
         {showFilters && <div className="filter-panel">
           <label>Категория<select value={category} onChange={(event) => setCategory(event.target.value)}><option>Всички категории</option>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label>Статус на границата<select value={status} onChange={(event) => setStatus(event.target.value)}><option>Всички граници</option><option>актуална</option><option>в процес на актуализация</option></select></label>
+          <label>Статус на цифровите граници<select value={status} onChange={(event) => setStatus(event.target.value)}><option>Всички граници</option><option>актуална</option><option>в процес на актуализация</option></select></label>
           {hasFilters && <button className="clear-button" onClick={clearFilters}><X size={14} /> Изчисти</button>}
         </div>}
 
         <div className="explorer-grid">
           <section className="map-panel">
             <div className="panel-heading"><div><h2>Карта</h2><span>Граници от предоставения GIS слой · EPSG:32635</span></div><label className="map-filter"><input type="checkbox" checked={mapFiltered} onChange={(event) => setMapFiltered(event.target.checked)} /> Само резултатите</label></div>
-            <div className="map-canvas"><TerritoryMap featureMap={featureMap} visible={visible} selectedId={selected?.source_code} onSelect={setSelected} /></div>
+            <div className="map-canvas"><TerritoryMap featureMap={featureMap} visible={visible} selectedId={selected?.source_code} fitTargetId={fitTargetId}
+              onSelect={(item) => { setFitTargetId(null); setSelected(item); }} /></div>
             <div className="map-legend">{categories.map((item) => <span key={item}><i style={{ background: palette[categoryIndex(item)] }} />{item}</span>)}</div>
             <div className="map-attribution">Геометрия: предоставен Shapefile `zpo_all`. Контурите са опростени за уеб визуализация.</div>
           </section>
 
           <aside className="results-panel">
-            <div className="panel-heading results-heading"><div><h2>Територии</h2><span>{filtered.length.toLocaleString('bg-BG')} резултата</span></div><span className="last-update">Източник: ИАОС<br />{latestSourceDate}</span></div>
+            <div className="panel-heading results-heading"><div><h2>Защитени територии</h2><span>{filtered.length.toLocaleString('bg-BG')} резултата</span></div><span className="last-update">Източник: локални XLS/DBF данни</span></div>
             <div className="table-wrap">
-              <table><thead><tr><th>НАИМЕНОВАНИЕ</th><th>КАТЕГОРИЯ</th><th>№</th><th>ПЛОЩ, ХА</th><th>ГРАНИЦА</th><th /></tr></thead>
-                <tbody>{pageRows.map((item) => <tr key={item.source_code} onClick={() => setSelected(item)} className={selected?.source_code === item.source_code ? 'row-selected' : ''}>
+              <table><thead><tr><th>НАИМЕНОВАНИЕ</th><th>КАТЕГОРИЯ</th><th>№</th><th>СТАТУС НА ЦИФРОВИТЕ ГРАНИЦИ</th><th /></tr></thead>
+                <tbody>{pageRows.map((item) => <tr key={item.source_code} onClick={() => { setSelected(item); setFitTargetId(item.source_code); }} className={selected?.source_code === item.source_code ? 'row-selected' : ''}>
                   <td><span className="territory-name">{item.name_bg}</span></td>
                   <td><span className="category-tag"><i style={{ background: palette[categoryIndex(item.category_name)] }} />{item.category_name}</span></td>
                   <td className="number-cell">{item.registry_number}</td>
-                  <td className="number-cell">{Number(item.area_ha).toLocaleString('bg-BG', { maximumFractionDigits: 2 })}</td>
                   <td><span className={`status ${item.boundary_status === 'актуална' ? 'status-current' : 'status-review'}`}><i />{item.boundary_status}</span></td>
                   <td><button className="row-open" aria-label={`Покажи ${item.name_bg} на картата`}><ArrowUpRight size={16} /></button></td>
                 </tr>)}</tbody>
@@ -264,12 +302,25 @@ function App() {
 
       <footer className="footer"><span>Данни: ИАОС · Пространствени граници от предоставения слой</span><a href="https://www.eea.government.bg/zpo/en/index.jsp" target="_blank" rel="noreferrer">Официален регистър <ExternalLink size={13} /></a></footer>
 
-      {selected && <div className="drawer-backdrop" onClick={() => setSelected(null)}><aside className="detail-drawer" onClick={(event) => event.stopPropagation()}>
-        <button className="drawer-close" onClick={() => setSelected(null)} aria-label="Затвори"><X size={19} /></button>
+      {selected && <div className="drawer-backdrop" onClick={() => { setSelected(null); setFitTargetId(null); }}><aside className="detail-drawer" onClick={(event) => event.stopPropagation()}>
+        <button className="drawer-close" onClick={() => { setSelected(null); setFitTargetId(null); }} aria-label="Затвори"><X size={19} /></button>
         <span className="drawer-code">{selected.source_code}</span><h2>{selected.name_bg}</h2>
         <span className="category-tag"><i style={{ background: palette[categoryIndex(selected.category_name)] }} />{selected.category_name}</span>
-        <div className="detail-grid"><div><small>РЕГИСТЪР №</small><b>{selected.registry_number}</b></div><div><small>ПЛОЩ</small><b>{Number(selected.area_ha).toLocaleString('bg-BG', { maximumFractionDigits: 2 })} ха</b></div><div><small>СТАТУС НА ГРАНИЦАТА</small><b>{selected.boundary_status}</b></div><div><small>КАТЕГОРИЯ</small><b>{selected.category_name}</b></div><div><small>СЪГЛАСУВАНОСТ НА КАТЕГОРИЯТА</small><b>{selected.category_code_consistent === 'true' ? 'Да' : 'Несъответствие в източника'}</b></div></div>
-        <div className="detail-note"><MapPin size={17} /><span>Избраният контур е маркиран на картата. Този CSV слой не съдържа площ, местоположение или данни за правните актове.</span></div>
+        <div className="detail-grid">
+          <div><small>РЕГИСТЪР №</small><b>{selected.registry_number}</b></div>
+          <div><small>КАТЕГОРИЯ</small><b>{selected.category_name}</b></div>
+          <div><small>СТАТУС НА ЦИФРОВИТЕ ГРАНИЦИ</small><b>{selected.boundary_status || '—'}</b></div>
+          {selected.area_ha && <div><small>ПЛОЩ (ХА)</small><b>{selected.area_ha}</b></div>}
+          {selected.purpose && <div className="detail-full"><small>ЦЕЛ НА ОБЯВЯВАНЕ</small><b>{selected.purpose}</b></div>}
+          {selected.designation_order && <div><small>ЗАПОВЕД №РД</small><b>{selected.designation_order}</b></div>}
+          {selected.designation_date && <div><small>ДАТА НА ОБЯВЯВАНЕ</small><b>{selected.designation_date}</b></div>}
+          {selected.state_gazette && <div><small>ДВ</small><b>{selected.state_gazette}</b></div>}
+          {selected.regions && <div><small>ОБЛАСТ</small><b>{selected.regions}</b></div>}
+          {selected.municipalities && <div><small>ОБЩИНА</small><b>{selected.municipalities}</b></div>}
+          {selected.settlements && <div className="detail-full"><small>НАСЕЛЕНО МЯСТО</small><b>{selected.settlements}</b></div>}
+          {selected.authority && <div><small>РИОСВ</small><b>{selected.authority}</b></div>}
+        </div>
+        <div className="detail-note"><MapPin size={17} /><span>Избраният контур е маркиран на картата.</span></div>
         <a className="source-link" href={selected.source_url} target="_blank" rel="noreferrer">Отвори записа в ИАОС <ArrowUpRight size={16} /></a>
       </aside></div>}
     </main>

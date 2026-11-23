@@ -1,4 +1,4 @@
-import csvText from '../../protected_territories.csv?raw';
+import csvText from '../../model/protected-areas.csv?raw';
 export { csvText };
 
 function parseCsv(text) {
@@ -28,4 +28,3 @@ function parseCsv(text) {
 
 export const territories = parseCsv(csvText);
 export const categories = [...new Set(territories.map((item) => item.category_name))].sort((a, b) => a.localeCompare(b, 'bg'));
-export const latestSourceDate = '29 октомври 2026';

@@ -1,0 +1,13 @@
+﻿dataset,field,type,description
+protected-areas.csv,source_code,text,Съставен GIS идентификатор
+protected-areas.csv,registry_number,integer,Пореден номер в Държавния регистър
+protected-areas.csv,name_bg,text,Официално наименование
+protected-areas.csv,category_code,integer,Категория от 1 до 6
+protected-areas.csv,category_name,text,Наименование на категорията
+protected-areas.csv,area_ha,decimal,Площ в хектари от локалния XLS източник
+protected-areas.csv,purpose,text,Цел на обявяване
+protected-areas.csv,boundary_status,text,Статус на цифровите граници
+protected-areas.csv,source_url,url,Официална връзка към записа в ИАОС
+territory-map.json,features[].d,SVG path,Опростена пространствена граница
+natura2000-sci.csv,SITECODE,text,Код на SCI зона от Натура 2000
+natura2000-spa.csv,SITECODE,text,Код на SPA зона от Натура 2000
