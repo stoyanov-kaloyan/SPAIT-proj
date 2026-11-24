@@ -1,0 +1,48 @@
+flowchart LR
+  subgraph Sources["Файлове предоставени от ИАОС"]
+    ZDBF["Метаданни"]
+    ZSHP["Геометрични данни"]
+    CategoryXLS["XLS файлове"]
+    EffacedXLS["Текстови данни за регионите"]
+    TreesXLS["venerable-trees.xls"]
+  end
+
+
+  subgraph Generators["Скриптове за генериране"]
+    BuildModel["scripts/build_model.py"]
+    BuildMap["scripts/build_map.py"]
+  end
+
+  subgraph Model["Генерирани файлове в model/"]
+    Protected["protected-areas.csv"]
+    Trees["venerable-trees.csv"]
+    Map["territory-map.json<br/>GeoJSON геометрия, SVG контури и граници"]
+    Dictionary["data-dictionary.csv"]
+  end
+
+  ZDBF --> BuildModel
+  CategoryXLS --> BuildModel
+  EffacedXLS --> BuildModel
+  TreesXLS --> BuildModel
+
+  BuildModel --> Protected
+  BuildModel --> Trees
+  BuildModel --> Dictionary
+
+  ZSHP --> BuildMap
+  ZDBF --> BuildMap
+  BuildMap --> Map
+
+  subgraph Consumers["Използване на генерираните файлове"]
+    Frontend["Frontend приложението"]
+    ChartScript["charts/generate_charts.py"]
+    ChartOutputs["Графики и статистически данни"]
+  end
+
+  Protected --> Frontend
+  Map --> Frontend
+  Protected -. "source_code ↔ feature id" .-> Map
+
+  Protected --> ChartScript
+  Trees --> ChartScript
+  ChartScript --> ChartOutputs
