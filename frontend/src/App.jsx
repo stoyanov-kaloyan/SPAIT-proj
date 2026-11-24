@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, ChevronDown, Download, ExternalLink, Filter, MapPin, Search, X } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, Download, ExternalLink, Filter, Info, MapPin, Search, X } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { categories, csvText, territories } from './data.js';
@@ -7,6 +7,46 @@ import mapData from '../../model/territory-map.json';
 
 const palette = ['#66896b', '#bd9b55', '#496f58', '#5b8882', '#7189a0', '#81779c'];
 const categoryIndex = (name) => Math.max(0, categories.indexOf(name));
+
+function InfoPopover({ label, text }) {
+  const triggerRef = useRef(null);
+  const [position, setPosition] = useState({ left: 0, top: 0, visible: false });
+
+  const showPopover = () => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const bubbleWidth = Math.min(300, window.innerWidth - 24);
+    const bubbleHeight = 92;
+    const left = Math.max(12, Math.min(window.innerWidth - bubbleWidth - 12,
+      rect.left + rect.width / 2 - bubbleWidth / 2));
+    const preferredTop = rect.top - bubbleHeight - 10;
+    const top = preferredTop >= 12
+      ? preferredTop
+      : Math.min(window.innerHeight - bubbleHeight - 12, rect.bottom + 10);
+    setPosition({ left, top, visible: true });
+  };
+
+  const hidePopover = () => setPosition((current) => ({ ...current, visible: false }));
+
+  return (
+    <span className="info-popover">
+      <button type="button" ref={triggerRef} className="info-popover-trigger" aria-label={label}
+        onMouseEnter={showPopover} onMouseLeave={hidePopover}
+        onFocus={showPopover} onBlur={hidePopover} onClick={(event) => {
+          event.stopPropagation();
+          if (position.visible) hidePopover();
+          else showPopover();
+        }}>
+        <Info size={12} />
+      </button>
+      {position.visible && (
+        <span className="info-popover-content" role="tooltip"
+          style={{ left: position.left, top: position.top }}>{text}</span>
+      )}
+    </span>
+  );
+}
 
 function TerritoryMap({ featureMap, visible, selectedId, fitTargetId, onSelect }) {
   const containerRef = useRef(null);
@@ -233,7 +273,11 @@ function App() {
 
       <section className="summary" id="top">
         <div><h1>Защитени територии</h1><p>Интерактивен преглед на наличните записи и граници.</p></div>
-        <div className="summary-stats"><div><b>{counts.total.toLocaleString('bg-BG')}</b><span>ЗАПИСИ</span></div><div><b>{counts.current.toLocaleString('bg-BG')}</b><span>АКТУАЛНИ ГРАНИЦИ</span></div><div><b>{counts.updating}</b><span>В АКТУАЛИЗАЦИЯ</span></div></div>
+        <div className="summary-stats">
+          <div><b>{counts.total.toLocaleString('bg-BG')}</b><span>ЗАПИСИ</span></div>
+          <div><b>{counts.current.toLocaleString('bg-BG')}</b><span>АКТУАЛНИ ГРАНИЦИ</span></div>
+          <div><b>{counts.updating}</b><span>В АКТУАЛИЗАЦИЯ</span></div>
+        </div>
       </section>
 
       <section className="explorer" id="explore">
@@ -250,17 +294,17 @@ function App() {
 
         <div className="explorer-grid">
           <section className="map-panel">
-            <div className="panel-heading"><div><h2>Карта</h2><span>Граници от предоставения GIS слой · EPSG:32635</span></div><label className="map-filter"><input type="checkbox" checked={mapFiltered} onChange={(event) => setMapFiltered(event.target.checked)} /> Само резултатите</label></div>
+            <div className="panel-heading"><div><h2>Карта</h2><span>Граници от Държавния регистър на защитените територии</span></div><label className="map-filter"><input type="checkbox" checked={mapFiltered} onChange={(event) => setMapFiltered(event.target.checked)} /> Само резултатите</label></div>
             <div className="map-canvas"><TerritoryMap featureMap={featureMap} visible={visible} selectedId={selected?.source_code} fitTargetId={fitTargetId}
               onSelect={(item) => { setFitTargetId(null); setSelected(item); }} /></div>
             <div className="map-legend">{categories.map((item) => <span key={item}><i style={{ background: palette[categoryIndex(item)] }} />{item}</span>)}</div>
-            <div className="map-attribution">Геометрия: предоставен Shapefile `zpo_all`. Контурите са опростени за уеб визуализация.</div>
+            <div className="map-attribution">Източник на контурите: предоставен набор от Държавния регистър. Контурите са опростени за бързо визуализиране в браузъра.</div>
           </section>
 
           <aside className="results-panel">
             <div className="panel-heading results-heading"><div><h2>Защитени територии</h2><span>{filtered.length.toLocaleString('bg-BG')} резултата</span></div><span className="last-update">Източник: Държавния регистър на ИАОС</span></div>
             <div className="table-wrap">
-              <table><thead><tr><th>НАИМЕНОВАНИЕ</th><th>КАТЕГОРИЯ</th><th>№</th><th>СТАТУС НА ЦИФРОВИТЕ ГРАНИЦИ</th><th /></tr></thead>
+              <table><thead><tr><th>НАИМЕНОВАНИЕ</th><th>КАТЕГОРИЯ</th><th>№</th><th><span className="label-with-info">СТАТУС НА ГРАНИЦАТА <InfoPopover label="Какво означава статусът на границата" text="Показва дали контурът в Държавния регистър е актуализиран или още се актуализира. Това е статус на картната граница, а не на самата защитена територия." /></span></th><th /></tr></thead>
                 <tbody>{pageRows.map((item) => <tr key={item.source_code} onClick={() => { setSelected(item); setFitTargetId(item.source_code); }} className={selected?.source_code === item.source_code ? 'row-selected' : ''}>
                   <td><span className="territory-name">{item.name_bg}</span></td>
                   <td><span className="category-tag"><i style={{ background: palette[categoryIndex(item.category_name)] }} />{item.category_name}</span></td>
@@ -289,7 +333,7 @@ function App() {
         <div className="detail-grid">
           <div><small>РЕГИСТЪР №</small><b>{selected.registry_number}</b></div>
           <div><small>КАТЕГОРИЯ</small><b>{selected.category_name}</b></div>
-          <div><small>СТАТУС НА ЦИФРОВИТЕ ГРАНИЦИ</small><b>{selected.boundary_status || '—'}</b></div>
+          <div><small className="label-with-info">СТАТУС НА ГРАНИЦАТА <InfoPopover label="Какво означава статусът на границата" text="Показва дали контурът в картния набор е актуален или се актуализира. „Актуална“ означава актуализирана граница. „В процес на актуализация“ означава, че контурът може да бъде променен по-късно." /></small><b>{selected.boundary_status || '—'}</b></div>
           {selected.area_ha && <div><small>ПЛОЩ (ХА)</small><b>{selected.area_ha}</b></div>}
           {selected.purpose && <div className="detail-full"><small>ЦЕЛ НА ОБЯВЯВАНЕ</small><b>{selected.purpose}</b></div>}
           {selected.designation_order && <div><small>ЗАПОВЕД №РД</small><b>{selected.designation_order}</b></div>}
@@ -300,7 +344,7 @@ function App() {
           {selected.settlements && <div className="detail-full"><small>НАСЕЛЕНО МЯСТО</small><b>{selected.settlements}</b></div>}
           {selected.authority && <div><small>РИОСВ</small><b>{selected.authority}</b></div>}
         </div>
-        <div className="detail-note"><MapPin size={17} /><span>Избраният контур е маркиран на картата.</span></div>
+        <div className="detail-note"><MapPin size={17} /><span>Избраната защитена територия е маркирана на картата. <b>Категория:</b> {selected.category_name}. <b>Регистров номер:</b> {selected.registry_number}. Контурът е взет от Държавния регистър на защитените територии по ЗЗТ.</span></div>
         <a className="source-link" href={selected.source_url} target="_blank" rel="noreferrer">Отвори записа в ИАОС <ArrowUpRight size={16} /></a>
       </aside></div>}
     </main>
