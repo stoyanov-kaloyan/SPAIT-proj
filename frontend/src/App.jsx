@@ -267,14 +267,14 @@ function App() {
     <main className="app-shell">
       <header className="topbar">
         <a className="brand" href="#top"><span className="brand-mark"><MapPin size={17} /></span><span>РЕГИСТЪР НА ЗАЩИТЕНИТЕ ТЕРИТОРИИ</span></a>
-        <div className="header-meta">БЪЛГАРИЯ <span /> {counts.total.toLocaleString('bg-BG')} ЗАПИСИ</div>
+        <div className="header-meta">БЪЛГАРИЯ <span /> {counts.total.toLocaleString('bg-BG')} ЗАПИСА</div>
         <button className="download-button" onClick={downloadCsv}><Download size={16} /> CSV</button>
       </header>
 
       <section className="summary" id="top">
         <div><h1>Защитени територии</h1><p>Интерактивен преглед на наличните записи и граници.</p></div>
         <div className="summary-stats">
-          <div><b>{counts.total.toLocaleString('bg-BG')}</b><span>ЗАПИСИ</span></div>
+          <div><b>{counts.total.toLocaleString('bg-BG')}</b><span>ЗАПИСА</span></div>
           <div><b>{counts.current.toLocaleString('bg-BG')}</b><span>АКТУАЛНИ ГРАНИЦИ</span></div>
           <div><b>{counts.updating}</b><span>В АКТУАЛИЗАЦИЯ</span></div>
         </div>
