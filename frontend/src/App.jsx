@@ -266,13 +266,13 @@ function App() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#top"><span className="brand-mark"><MapPin size={17} /></span><span>РЕГИСТЪР НА ЗАЩИТЕНИТЕ ТЕРИТОРИИ</span></a>
+        <a className="brand" href="#top"><span className="brand-mark"><MapPin size={17} /></span><span>РЕГИСТЪР НА ЗАЩИТЕНИТЕ ТЕРИТОРИИ И ЗАЩИТЕНИТЕ ЗОНИ В БЪЛГАРИЯ</span></a>
         <div className="header-meta">БЪЛГАРИЯ <span /> {counts.total.toLocaleString('bg-BG')} ЗАПИСА</div>
         <button className="download-button" onClick={downloadCsv}><Download size={16} /> CSV</button>
       </header>
 
       <section className="summary" id="top">
-        <div><h1>Защитени територии</h1><p>Интерактивен преглед на наличните записи и граници.</p></div>
+        <div><h1>Регистър на защитените територии и защитените зони в България</h1><p>Интерактивен преглед на наличните защитени територии и техните граници.</p></div>
         <div className="summary-stats">
           <div><b>{counts.total.toLocaleString('bg-BG')}</b><span>ЗАПИСА</span></div>
           <div><b>{counts.current.toLocaleString('bg-BG')}</b><span>АКТУАЛНИ ГРАНИЦИ</span></div>
@@ -294,7 +294,7 @@ function App() {
 
         <div className="explorer-grid">
           <section className="map-panel">
-            <div className="panel-heading"><div><h2>Карта</h2><span>Граници от Държавния регистър на защитените територии</span></div><label className="map-filter"><input type="checkbox" checked={mapFiltered} onChange={(event) => setMapFiltered(event.target.checked)} /> Само резултатите</label></div>
+            <div className="panel-heading"><div><h2>Карта</h2><span>Граници от Регистъра на защитените територии и защитените зони в България</span></div><label className="map-filter"><input type="checkbox" checked={mapFiltered} onChange={(event) => setMapFiltered(event.target.checked)} /> Само резултатите</label></div>
             <div className="map-canvas"><TerritoryMap featureMap={featureMap} visible={visible} selectedId={selected?.source_code} fitTargetId={fitTargetId}
               onSelect={(item) => { setFitTargetId(null); setSelected(item); }} /></div>
             <div className="map-legend">{categories.map((item) => <span key={item}><i style={{ background: palette[categoryIndex(item)] }} />{item}</span>)}</div>
@@ -302,7 +302,7 @@ function App() {
           </section>
 
           <aside className="results-panel">
-            <div className="panel-heading results-heading"><div><h2>Защитени територии</h2><span>{filtered.length.toLocaleString('bg-BG')} резултата</span></div><span className="last-update">Източник: Държавния регистър на ИАОС</span></div>
+            <div className="panel-heading results-heading"><div><h2>Защитени територии</h2><span>{filtered.length.toLocaleString('bg-BG')} резултата</span></div><span className="last-update">Източник: ИАОС</span></div>
             <div className="table-wrap">
               <table><thead><tr><th>НАИМЕНОВАНИЕ</th><th>КАТЕГОРИЯ</th><th>№</th><th><span className="label-with-info">СТАТУС НА ГРАНИЦАТА <InfoPopover label="Какво означава статусът на границата" text="Показва дали контурът в Държавния регистър е актуализиран или още се актуализира. Това е статус на картната граница, а не на самата защитена територия." /></span></th><th /></tr></thead>
                 <tbody>{pageRows.map((item) => <tr key={item.source_code} onClick={() => { setSelected(item); setFitTargetId(item.source_code); }} className={selected?.source_code === item.source_code ? 'row-selected' : ''}>
