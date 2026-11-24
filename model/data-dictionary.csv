@@ -15,6 +15,6 @@ protected-areas.csv,settlements,text,Населени места (по едно 
 protected-areas.csv,authority,text,Компетентна РИОСВ според източника
 protected-areas.csv,boundary_status,text,Статус на цифровите граници
 protected-areas.csv,source_url,url,Официална връзка към записа в ИАОС
-territory-map.json,features[].d,SVG path,Опростена пространствена граница
+territory-map.json,features[].d,SVG path,Векторна граница от изходния набор
 natura2000-sci.csv,SITECODE,text,Код на SCI зона от Натура 2000
 natura2000-spa.csv,SITECODE,text,Код на SPA зона от Натура 2000

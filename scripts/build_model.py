@@ -269,7 +269,7 @@ def build_dictionary():
         {"dataset": "protected-areas.csv", "field": "authority", "type": "text", "description": "Компетентна РИОСВ според източника"},
         {"dataset": "protected-areas.csv", "field": "boundary_status", "type": "text", "description": "Статус на цифровите граници"},
         {"dataset": "protected-areas.csv", "field": "source_url", "type": "url", "description": "Официална връзка към записа в ИАОС"},
-        {"dataset": "territory-map.json", "field": "features[].d", "type": "SVG path", "description": "Опростена пространствена граница"},
+        {"dataset": "territory-map.json", "field": "features[].d", "type": "SVG path", "description": "Векторна граница от изходния набор"},
         {"dataset": "natura2000-sci.csv", "field": "SITECODE", "type": "text", "description": "Код на SCI зона от Натура 2000"},
         {"dataset": "natura2000-spa.csv", "field": "SITECODE", "type": "text", "description": "Код на SPA зона от Натура 2000"},
     ]

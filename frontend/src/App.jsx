@@ -298,7 +298,7 @@ function App() {
             <div className="map-canvas"><TerritoryMap featureMap={featureMap} visible={visible} selectedId={selected?.source_code} fitTargetId={fitTargetId}
               onSelect={(item) => { setFitTargetId(null); setSelected(item); }} /></div>
             <div className="map-legend">{categories.map((item) => <span key={item}><i style={{ background: palette[categoryIndex(item)] }} />{item}</span>)}</div>
-            <div className="map-attribution">Източник на контурите: предоставен набор от Държавния регистър. Контурите са опростени за бързо визуализиране в браузъра.</div>
+            <div className="map-attribution">Източник на контурите: Регистърът на защитените територии и защитените зони в България. Контурите са запазени в пълна детайлност от предоставения набор.</div>
           </section>
 
           <aside className="results-panel">

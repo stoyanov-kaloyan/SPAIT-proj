@@ -76,7 +76,7 @@
 - `effaced-protected-areas.csv` — заличени природни забележителности и защитени местности;
 - `venerable-trees.csv` — записите за вековни и забележителни дървета;
 - `natura2000-sci.csv` и `natura2000-spa.csv` — отделни SCI и SPA набори;
-- `territory-map.json` — опростени SVG граници за frontend картата;
+- `territory-map.json` — пълно детайлни SVG и GeoJSON граници за frontend картата;
 - `data-dictionary.csv` — речник на основните изходни полета.
 
 ## Отворен формат
