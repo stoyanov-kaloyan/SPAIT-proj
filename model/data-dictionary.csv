@@ -4,8 +4,15 @@ protected-areas.csv,registry_number,integer,Пореден номер в Дър�
 protected-areas.csv,name_bg,text,Официално наименование
 protected-areas.csv,category_code,integer,Категория от 1 до 6
 protected-areas.csv,category_name,text,Наименование на категорията
-protected-areas.csv,area_ha,decimal,Площ в хектари от локалния XLS източник
+protected-areas.csv,area_ha,decimal,Площ в хектари от данните на Държавния регистър
 protected-areas.csv,purpose,text,Цел на обявяване
+protected-areas.csv,designation_order,text,Номер на заповедта за обявяване
+protected-areas.csv,designation_date,date,Дата на обявяване (ГГГГ-ММ-ДД)
+protected-areas.csv,state_gazette,text,"Брой/година на ""Държавен вестник"""
+protected-areas.csv,regions,text,Области (по една на ред)
+protected-areas.csv,municipalities,text,Общини (по една на ред)
+protected-areas.csv,settlements,text,Населени места (по едно на ред)
+protected-areas.csv,authority,text,Компетентна РИОСВ според източника
 protected-areas.csv,boundary_status,text,Статус на цифровите граници
 protected-areas.csv,source_url,url,Официална връзка към записа в ИАОС
 territory-map.json,features[].d,SVG path,Опростена пространствена граница

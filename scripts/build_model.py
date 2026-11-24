@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import csv
+import re
 import shutil
 import zipfile
 from datetime import datetime, timedelta
@@ -23,6 +24,7 @@ CATEGORIES = {
 
 
 def excel_date(value):
+    """Return an ISO date (YYYY-MM-DD) from an Excel serial number or a dd.mm.yyyy text date."""
     if not value:
         return ""
     try:
@@ -30,17 +32,50 @@ def excel_date(value):
         date = datetime(1899, 12, 30) + timedelta(days=number)
         return date.strftime("%Y-%m-%d")
     except (TypeError, ValueError, OverflowError):
-        return str(value).strip()
+        pass
+    text = str(value).strip()
+    match = re.fullmatch(r"(\d{1,2})\.(\d{1,2})\.(\d{4})\s*(г\.?)?", text)
+    if match:
+        day, month, year = (int(part) for part in match.groups()[:3])
+        try:
+            return datetime(year, month, day).strftime("%Y-%m-%d")
+        except ValueError:
+            return text
+    return text
+
+
+def clean_number_text(value):
+    """Drop the '.0' that Excel adds to whole numbers, e.g. order '349.0' -> '349'."""
+    text = clean(value)
+    return text[:-2] if re.fullmatch(r"\d+\.0", text) else text
+
+
+def parse_area(value):
+    """Normalise an area in hectares: '30 129,9' -> '30129.9'. Non-numeric text is kept as is."""
+    text = clean(value).replace(" ", "").replace(" ", "")
+    if re.fullmatch(r"\d+,\d+", text):
+        text = text.replace(",", ".")
+    try:
+        float(text)
+    except ValueError:
+        return clean(value)
+    return text
 
 
 def clean(value):
     return str(value).replace("\r", "").strip() if value not in (None, "") else ""
 
 
+def normalise_header(value):
+    """Unify spacing in XLS headers, e.g. 'Код на ЗТ- № в ДР' -> 'Код на ЗТ - № в ДР'."""
+    text = re.sub(r"\s*-\s*", " - ", clean(value))
+    return re.sub(r"\s+", " ", text)
+
+
 def read_sheet(path):
     book = xlrd.open_workbook(path)
     sheet = book.sheet_by_index(0)
-    headers = [clean(sheet.cell_value(0, column)) for column in range(sheet.ncols)]
+    headers = [normalise_header(sheet.cell_value(0, column)) for column in range(sheet.ncols)]
     return [dict(zip(headers, [clean(sheet.cell_value(row, column)) for column in range(sheet.ncols)]))
             for row in range(1, sheet.nrows)]
 
@@ -98,17 +133,16 @@ def build_protected_areas():
     for filename, (category_code, category_name) in CATEGORIES.items():
         for source in read_sheet(DATA / filename):
             registry_number = first_present(source, (
-                "Код на ЗТ - № в ДР", "Код на ЗТ", "Код на ЗТ  - № в ДР",
-                "№ по ред", "Код на ЗТ - № в ДР",
+                "Код на ЗТ - № в ДР", "Код на ЗТ", "№ по ред",
             ))
             name = first_present(source, ("Наименование на ЗТ", "Наименование", "Име на ЗТ"))
             if not registry_number or not name:
                 continue
             registry_number = clean(registry_number).split(".", 1)[0]
             enriched[(str(category_code), registry_number)] = {
-                "area_ha": first_present(source, ("Площ (ха)", "Площ-ха")),
+                "area_ha": parse_area(first_present(source, ("Площ (ха)", "Площ - ха"))),
                 "purpose": first_present(source, ("Цел на обявяване", "Цели на обявяване")),
-                "designation_order": first_present(source, ("Заповед №РД",)),
+                "designation_order": clean_number_text(first_present(source, ("Заповед №РД",))),
                 "designation_date": excel_date(first_present(source, ("Дата на обявяване",))),
                 "state_gazette": first_present(source, ("ДВ",)),
                 "regions": first_present(source, ("Област",)),
@@ -226,6 +260,13 @@ def build_dictionary():
         {"dataset": "protected-areas.csv", "field": "category_name", "type": "text", "description": "Наименование на категорията"},
         {"dataset": "protected-areas.csv", "field": "area_ha", "type": "decimal", "description": "Площ в хектари от данните на Държавния регистър"},
         {"dataset": "protected-areas.csv", "field": "purpose", "type": "text", "description": "Цел на обявяване"},
+        {"dataset": "protected-areas.csv", "field": "designation_order", "type": "text", "description": "Номер на заповедта за обявяване"},
+        {"dataset": "protected-areas.csv", "field": "designation_date", "type": "date", "description": "Дата на обявяване (ГГГГ-ММ-ДД)"},
+        {"dataset": "protected-areas.csv", "field": "state_gazette", "type": "text", "description": "Брой/година на \"Държавен вестник\""},
+        {"dataset": "protected-areas.csv", "field": "regions", "type": "text", "description": "Области (по една на ред)"},
+        {"dataset": "protected-areas.csv", "field": "municipalities", "type": "text", "description": "Общини (по една на ред)"},
+        {"dataset": "protected-areas.csv", "field": "settlements", "type": "text", "description": "Населени места (по едно на ред)"},
+        {"dataset": "protected-areas.csv", "field": "authority", "type": "text", "description": "Компетентна РИОСВ според източника"},
         {"dataset": "protected-areas.csv", "field": "boundary_status", "type": "text", "description": "Статус на цифровите граници"},
         {"dataset": "protected-areas.csv", "field": "source_url", "type": "url", "description": "Официална връзка към записа в ИАОС"},
         {"dataset": "territory-map.json", "field": "features[].d", "type": "SVG path", "description": "Опростена пространствена граница"},

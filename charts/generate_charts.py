@@ -38,18 +38,18 @@ def configure_font():
     plt.rcParams["axes.facecolor"] = "#ffffff"
 
 
-def save_bar_chart(labels, values, title, filename, horizontal=True):
+def save_bar_chart(labels, values, title, filename, horizontal=True, value_label="Брой записи"):
     fig_height = max(4.2, 0.38 * len(labels) + 1.5)
     fig, ax = plt.subplots(figsize=(9.2, fig_height))
     bars = ax.barh(labels, values, color=COLORS[0]) if horizontal else ax.bar(labels, values, color=COLORS)
     if horizontal:
         ax.invert_yaxis()
         ax.bar_label(bars, fmt="%.0f", padding=4)
-        ax.set_xlabel("Брой записи")
+        ax.set_xlabel(value_label)
     else:
         ax.tick_params(axis="x", rotation=25)
         ax.bar_label(bars, fmt="%.0f", padding=4)
-        ax.set_ylabel("Брой записи")
+        ax.set_ylabel(value_label)
     ax.set_title(title, loc="left", fontsize=14, fontweight="bold", pad=12)
     ax.grid(axis="x" if horizontal else "y", alpha=0.18)
     ax.spines[["top", "right"]].set_visible(False)
@@ -145,10 +145,11 @@ def main():
     ]
     top_areas = sorted(protected_with_area, key=lambda item: item[1], reverse=True)[:15]
     save_bar_chart(
-        [name for name, _ in reversed(top_areas)],
-        [area for _, area in reversed(top_areas)],
+        [name for name, _ in top_areas],
+        [area for _, area in top_areas],
         "Най-големи защитени територии по площ",
         "top-areas.png",
+        value_label="Площ (ха)",
     )
 
     change_counts = Counter()
