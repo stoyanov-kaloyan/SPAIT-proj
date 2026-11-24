@@ -7,6 +7,16 @@ import mapData from '../../model/territory-map.json';
 
 const palette = ['#66896b', '#bd9b55', '#496f58', '#5b8882', '#7189a0', '#81779c'];
 const categoryIndex = (name) => Math.max(0, categories.indexOf(name));
+const formatArea = (value) => {
+  const area = Number(value);
+  return Number.isFinite(area)
+    ? area.toLocaleString('bg-BG', { maximumFractionDigits: 4 })
+    : '—';
+};
+const formatDate = (value) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : value || '—';
+};
 
 function InfoPopover({ label, text }) {
   const triggerRef = useRef(null);
@@ -220,7 +230,7 @@ function App() {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('Всички категории');
   const [status, setStatus] = useState('Всички граници');
-  const [sortBy, setSortBy] = useState('name_bg');
+  const [sortBy, setSortBy] = useState('area_ha');
   const [selected, setSelected] = useState(null);
   const [fitTargetId, setFitTargetId] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -244,6 +254,14 @@ function App() {
       return matchesTerm && matchesCategory && matchesStatus;
     }).sort((a, b) => {
       if (sortBy === 'registry_number') return Number(a.registry_number) - Number(b.registry_number);
+      if (sortBy === 'area_ha') {
+        const areaA = Number(a.area_ha);
+        const areaB = Number(b.area_ha);
+        if (!Number.isFinite(areaA) && !Number.isFinite(areaB)) return a.name_bg.localeCompare(b.name_bg, 'bg');
+        if (!Number.isFinite(areaA)) return 1;
+        if (!Number.isFinite(areaB)) return -1;
+        return areaB - areaA;
+      }
       return a.name_bg.localeCompare(b.name_bg, 'bg');
     });
   }, [query, category, status, sortBy]);
@@ -284,7 +302,7 @@ function App() {
         <div className="toolbar">
           <label className="search-box"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Търси име, номер или код…" /></label>
           <button className={`filter-toggle ${showFilters ? 'pressed' : ''}`} onClick={() => setShowFilters(!showFilters)}><Filter size={16} /> Филтри <ChevronDown size={15} /></button>
-          <label className="sort-select"><span>СОРТИРАНЕ</span><select value={sortBy} onChange={(event) => setSortBy(event.target.value)}><option value="name_bg">По име</option><option value="registry_number">По номер</option></select></label>
+          <label className="sort-select"><span>СОРТИРАНЕ</span><select value={sortBy} onChange={(event) => setSortBy(event.target.value)}><option value="area_ha">По площ</option><option value="name_bg">По име</option><option value="registry_number">По номер</option></select></label>
         </div>
         {showFilters && <div className="filter-panel">
           <label>Категория<select value={category} onChange={(event) => setCategory(event.target.value)}><option>Всички категории</option>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -304,11 +322,12 @@ function App() {
           <aside className="results-panel">
             <div className="panel-heading results-heading"><div><h2>Защитени територии</h2><span>{filtered.length.toLocaleString('bg-BG')} резултата</span></div><span className="last-update">Източник: ИАОС</span></div>
             <div className="table-wrap">
-              <table><thead><tr><th>НАИМЕНОВАНИЕ</th><th>КАТЕГОРИЯ</th><th>№</th><th><span className="label-with-info">СТАТУС НА ГРАНИЦАТА <InfoPopover label="Какво означава статусът на границата" text="Показва дали контурът в Държавния регистър е актуализиран или още се актуализира. Това е статус на картната граница, а не на самата защитена територия." /></span></th><th /></tr></thead>
+              <table><thead><tr><th>НАИМЕНОВАНИЕ</th><th>КАТЕГОРИЯ</th><th>№</th><th>ПЛОЩ, ХА</th><th><span className="label-with-info">СТАТУС НА ГРАНИЦАТА <InfoPopover label="Какво означава статусът на границата" text="Показва дали контурът в Държавния регистър е актуализиран или още се актуализира. Това е статус на картната граница, а не на самата защитена територия." /></span></th><th /></tr></thead>
                 <tbody>{pageRows.map((item) => <tr key={item.source_code} onClick={() => { setSelected(item); setFitTargetId(item.source_code); }} className={selected?.source_code === item.source_code ? 'row-selected' : ''}>
                   <td><span className="territory-name">{item.name_bg}</span></td>
                   <td><span className="category-tag"><i style={{ background: palette[categoryIndex(item.category_name)] }} />{item.category_name}</span></td>
                   <td className="number-cell">{item.registry_number}</td>
+                  <td className="number-cell">{formatArea(item.area_ha)}</td>
                   <td><span className={`status ${item.boundary_status === 'актуална' ? 'status-current' : 'status-review'}`}><i />{item.boundary_status}</span></td>
                   <td><button className="row-open" aria-label={`Покажи ${item.name_bg} на картата`}><ArrowUpRight size={16} /></button></td>
                 </tr>)}</tbody>
@@ -334,10 +353,10 @@ function App() {
           <div><small>РЕГИСТЪР №</small><b>{selected.registry_number}</b></div>
           <div><small>КАТЕГОРИЯ</small><b>{selected.category_name}</b></div>
           <div><small className="label-with-info">СТАТУС НА ГРАНИЦАТА <InfoPopover label="Какво означава статусът на границата" text="Показва дали контурът в картния набор е актуален или се актуализира. „Актуална“ означава актуализирана граница. „В процес на актуализация“ означава, че контурът може да бъде променен по-късно." /></small><b>{selected.boundary_status || '—'}</b></div>
-          {selected.area_ha && <div><small>ПЛОЩ (ХА)</small><b>{selected.area_ha}</b></div>}
+          {selected.area_ha && <div><small>ПЛОЩ (ХА)</small><b>{formatArea(selected.area_ha)}</b></div>}
           {selected.purpose && <div className="detail-full"><small>ЦЕЛ НА ОБЯВЯВАНЕ</small><b>{selected.purpose}</b></div>}
           {selected.designation_order && <div><small>ЗАПОВЕД №РД</small><b>{selected.designation_order}</b></div>}
-          {selected.designation_date && <div><small>ДАТА НА ОБЯВЯВАНЕ</small><b>{selected.designation_date}</b></div>}
+          {selected.designation_date && <div><small>ДАТА НА ОБЯВЯВАНЕ</small><b>{formatDate(selected.designation_date)}</b></div>}
           {selected.state_gazette && <div><small>ДВ</small><b>{selected.state_gazette}</b></div>}
           {selected.regions && <div><small>ОБЛАСТ</small><b>{selected.regions}</b></div>}
           {selected.municipalities && <div><small>ОБЩИНА</small><b>{selected.municipalities}</b></div>}
